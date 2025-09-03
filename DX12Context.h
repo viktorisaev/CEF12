@@ -68,7 +68,11 @@ struct DX12Context {
     UINT8* cbCpu = nullptr;
 
     // Browser texture (DX12) + SRV
-    UINT browserW = 1024, browserH = 1024;
+    UINT browserW = 1024;
+    UINT browserH = 1024;
+    UINT rowPitch = ((browserW * 4 + 255) & ~255u);
+    UINT uploadSize = rowPitch * browserH;
+    ComPtr<ID3D12Resource> uploadTexResource;
     ComPtr<ID3D12Resource> browserTex;
     D3D12_CPU_DESCRIPTOR_HANDLE srvCpu{};
     D3D12_GPU_DESCRIPTOR_HANDLE srvGpu{};
@@ -88,6 +92,8 @@ struct DX12Context {
 
     void WaitGPU();
     void Init(HWND hwnd, UINT width, UINT height);
+
+    void UpdateTexture(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds);
 
     void Resize(UINT w, UINT h);
     void Begin(std::chrono::steady_clock::time_point timeStamp, float mouseX, float mouseY);

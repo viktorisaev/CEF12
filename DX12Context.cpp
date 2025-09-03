@@ -241,7 +241,7 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height) {
     td.SampleDesc.Count = 1;
     td.Flags = D3D12_RESOURCE_FLAG_NONE;
     td.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-    ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &td, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&browserTex)));
+    ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &td, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, nullptr, IID_PPV_ARGS(&browserTex)));
 
     D3D12_SHADER_RESOURCE_VIEW_DESC sv{};
     sv.Format = td.Format;
@@ -251,47 +251,68 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height) {
     device->CreateShaderResourceView(browserTex.Get(), &sv, srvCpu);
 
     // Upload heap for software paints
-    ComPtr<ID3D12Resource> uploadTexResource;
-    UINT rowPitch = ((browserW * 4 + 255) & ~255u);
-    UINT uploadSize = rowPitch * browserH;
+    rowPitch = ((browserW * 4 + 255) & ~255u);
+    uploadSize = rowPitch * browserH;
     CD3DX12_RESOURCE_DESC upDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadSize);
     ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &upDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadTexResource)));
+    uploadTexResource->SetName(L"UploadTexture");
 
+    // move to render per frame
+//    UpdateTexture(uploadTexResource);
+
+
+    // D3D11-on-12
+    //D3D_FEATURE_LEVEL fl = D3D_FEATURE_LEVEL_11_0;
+    //ID3D12CommandQueue* queues[] = { queue.Get() };
+    //ThrowIfFailed(D3D11On12CreateDevice(device.Get(), 0, &fl, 1, reinterpret_cast<IUnknown**>(queues), 1, 0, &d3d11, &d3d11ctx, nullptr));
+    //ThrowIfFailed(d3d11.As(&d3d11on12));
+    //ThrowIfFailed(d3d11on12->CreateWrappedResource(browserTex.Get(), &d3d11Flags, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, IID_PPV_ARGS(&wrappedBrowserTex)));
+}
+
+void DX12Context::UpdateTexture(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds)
+{
     {
         byte* p = static_cast<byte*>(malloc(uploadSize));
-        // fill texture with something
-        for (UINT h = 0; h < browserH; ++h)
+        if (p)
         {
-            for (UINT v = 0; v < browserW; ++v)
+            // fill texture with something
+            for (UINT h = 0; h < browserH; ++h)
             {
-                p[h * rowPitch + v * 4 + 0] = (0xFF * v) / browserW;
-                p[h * rowPitch + v * 4 + 1] = 0x00 + (h * v) % 129;
-                p[h * rowPitch + v * 4 + 2] = (0xFF * h) / browserH;
-                p[h * rowPitch + v * 4 + 3] = 0xFF;
+                for (UINT v = 0; v < browserW; ++v)
+                {
+                    p[h * rowPitch + v * 4 + 0] = (0xFF * v) / browserW;
+                    p[h * rowPitch + v * 4 + 1] = ((milliseconds/8) % 256) + (h * v) /32;
+                    p[h * rowPitch + v * 4 + 2] = (0xFF * h) / browserH;
+                    p[h * rowPitch + v * 4 + 3] = 0xFF;
+                }
             }
+
+            //CD3DX12_RANGE r(0, 0);
+            //browserTex->Map(0, &r, reinterpret_cast<void**>(&p));
+            //browserTex->Unmap(0, nullptr);
+
+            // use the cmdList that is in progress
+            //ThrowIfFailed(alloc[frameIndex]->Reset());
+            //ThrowIfFailed(cmdList->Reset(alloc[frameIndex].Get(), nullptr));
+
+            D3D12_SUBRESOURCE_DATA uploadData = {};
+            uploadData.pData = reinterpret_cast<BYTE*>(p);
+            uploadData.RowPitch = browserW * 4;
+            uploadData.SlicePitch = uploadSize;
+
+            CD3DX12_RESOURCE_BARRIER texBarrierBefore = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+            cmdList->ResourceBarrier(1, &texBarrierBefore);
+            UpdateSubresources(cmdList.Get(), browserTex.Get(), uploadTexResource.Get(), 0, 0, 1, &uploadData);
+            CD3DX12_RESOURCE_BARRIER texBarrierAfter = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            cmdList->ResourceBarrier(1, &texBarrierAfter);
+
+            // use the cmdList that is in progress
+            //ThrowIfFailed(cmdList->Close());
+
+            //ID3D12CommandList* lists[] = { cmdList.Get() };
+            //queue->ExecuteCommandLists(1, lists);
+            //WaitGPU();
         }
-
-        //CD3DX12_RANGE r(0, 0);
-        //browserTex->Map(0, &r, reinterpret_cast<void**>(&p));
-        //browserTex->Unmap(0, nullptr);
-
-        ThrowIfFailed(alloc[frameIndex]->Reset());
-        ThrowIfFailed(cmdList->Reset(alloc[frameIndex].Get(), nullptr));
-
-        D3D12_SUBRESOURCE_DATA uploadData = {};
-        uploadData.pData = reinterpret_cast<BYTE*>(p);
-        uploadData.RowPitch = browserW * 4;
-        uploadData.SlicePitch = uploadSize;
-
-        UpdateSubresources(cmdList.Get(), browserTex.Get(), uploadTexResource.Get(), 0, 0, 1, &uploadData);
-        CD3DX12_RESOURCE_BARRIER texBarrier = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        cmdList->ResourceBarrier(1, &texBarrier);
-
-        ThrowIfFailed(cmdList->Close());
-
-        ID3D12CommandList* lists[] = { cmdList.Get() };
-        queue->ExecuteCommandLists(1, lists);
-        WaitGPU();
 
         free(p);
 
@@ -317,14 +338,6 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height) {
         //queue->ExecuteCommandLists(1, lists);
         //WaitGPU();
     }
-
-
-    // D3D11-on-12
-    //D3D_FEATURE_LEVEL fl = D3D_FEATURE_LEVEL_11_0;
-    //ID3D12CommandQueue* queues[] = { queue.Get() };
-    //ThrowIfFailed(D3D11On12CreateDevice(device.Get(), 0, &fl, 1, reinterpret_cast<IUnknown**>(queues), 1, 0, &d3d11, &d3d11ctx, nullptr));
-    //ThrowIfFailed(d3d11.As(&d3d11on12));
-    //ThrowIfFailed(d3d11on12->CreateWrappedResource(browserTex.Get(), &d3d11Flags, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, IID_PPV_ARGS(&wrappedBrowserTex)));
 }
 
 void DX12Context::Resize(UINT w, UINT h)
@@ -399,8 +412,14 @@ DirectX::XMMATRIX RotationMatrixFromTwoVectors(DirectX::FXMVECTOR from, DirectX:
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// BEGIN DRAW
 void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float mouseX, float mouseY)
 {
+    auto duration = timeStamp.time_since_epoch();
+    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+
     ThrowIfFailed(alloc[frameIndex]->Reset());
     ThrowIfFailed(cmdList->Reset(alloc[frameIndex].Get(), pso.Get()));
+
+    // update texture per frame
+    UpdateTexture(uploadTexResource, milliseconds);
 
     CD3DX12_RESOURCE_BARRIER toRT = CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
     cmdList->ResourceBarrier(1, &toRT);
@@ -427,10 +446,6 @@ void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float m
     //    0,0,1,0,
     //    0,0,0,1
     //};
-
-    auto duration = timeStamp.time_since_epoch();
-    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-
 
     // rotation by mouse
     DirectX::XMVECTOR mouseVector = DirectX::XMVectorSet(mouseX, -mouseY, RotationStrength, 0.0f);
