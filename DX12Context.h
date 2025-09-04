@@ -81,19 +81,33 @@ struct DX12Context {
     ComPtr<ID3D12Resource> uploadHeap;
 
     // D3D11-on-12
-    ComPtr<ID3D11Device> d3d11;
+    ComPtr<ID3D11Device> d3d11Device;
+//    ComPtr<ID3D11DeviceContext> context;
+    ComPtr<ID3D11Texture2D> uploadTex;  // resource to populate data from CPU to GPU so later it could be copied to sharedBrowserTex
+    ComPtr<ID3D11Texture2D> sharedBrowserTex;
+    ComPtr<IDXGIResource1> dxgiRes;
+
+    HANDLE sharedBrowserHandle = nullptr;
+    ComPtr<ID3D12Resource> sharedTex12;
+
+
     ComPtr<ID3D11DeviceContext> d3d11ctx;
     ComPtr<ID3D11On12Device> d3d11on12;
     ComPtr<ID3D11Resource> wrappedBrowserTex; // D3D11 view of browserTex
-    D3D11_RESOURCE_FLAGS d3d11Flags{ /*D3D11_BIND_RENDER_TARGET |*/ D3D11_BIND_SHADER_RESOURCE };
+//    D3D11_RESOURCE_FLAGS d3d11Flags{ /*D3D11_BIND_RENDER_TARGET |*/ D3D11_BIND_SHADER_RESOURCE };
+
+    D3D11_QUERY_DESC queryDesc = { D3D11_QUERY_EVENT, 0 };
+    ComPtr<ID3D11Query> query;
 
     // Synchronization for copy
     std::mutex mtx;
 
     void WaitGPU();
     void Init(HWND hwnd, UINT width, UINT height);
+    void Finalize();
 
-    void UpdateTexture(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds);
+    void UpdateTexture12(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds);
+    void UpdateTexture11to12(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds);    // we create DirectX11 texture to be used in DirectX12 (like CEF does)
 
     void Resize(UINT w, UINT h);
     void Begin(std::chrono::steady_clock::time_point timeStamp, float mouseX, float mouseY);

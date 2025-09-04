@@ -62,7 +62,8 @@ public:
         CEF_REQUIRE_UI_THREAD();
         if (type != PET_VIEW) return;
         // Software fallback path: buffer is BGRA
-        if ((UINT)width == gDX->browserW && (UINT)height == gDX->browserH) {
+        if ((UINT)width == gDX->browserW && (UINT)height == gDX->browserH)
+        {
             gDX->UploadSoftwareBitmap(buffer, width * 4);
         }
     }
@@ -70,12 +71,16 @@ public:
     void OnAcceleratedPaint(CefRefPtr<CefBrowser> browser, PaintElementType type, const RectList& dirtyRects, const CefAcceleratedPaintInfo& info) override
     {
         CEF_REQUIRE_UI_THREAD();
-        if (type != PET_VIEW || !info.shared_texture_handle) return;
+        if (type != PET_VIEW || !info.shared_texture_handle)
+        {
+            return;
+        }
         // Open the shared handle as an ID3D11Texture2D on our D3D11 device
-        HANDLE h = reinterpret_cast<HANDLE>(!info.shared_texture_handle);
+        HANDLE h = reinterpret_cast<HANDLE>(info.shared_texture_handle);
         ComPtr<ID3D11Texture2D> src;
-        HRESULT hr = gDX->d3d11->OpenSharedResource(h, __uuidof(ID3D11Texture2D), (void**)src.GetAddressOf());
-        if (SUCCEEDED(hr) && src) {
+        HRESULT hr = gDX->d3d11Device->OpenSharedResource(h, __uuidof(ID3D11Texture2D), (void**)src.GetAddressOf());
+        if (SUCCEEDED(hr) && src)
+        {
             gDX->CopyFromD3D11Shared(src.Get());
         }
     }
@@ -144,13 +149,13 @@ void AppendToLog(const char* textToAppend)
 {
     DWORD bytesWritten = 0;
 
-    SYSTEMTIME utc, local;
+    SYSTEMTIME local;
     GetLocalTime(&local);  // Local time
 
     char buf[1024];
     sprintf_s(buf, "[%02d:%02d:%02d.%03d] - %s\r\n", local.wHour, local.wMinute, local.wSecond, local.wMilliseconds, textToAppend);
 
-    BOOL ok = WriteFile(hLogFile, buf, strlen(buf), &bytesWritten, nullptr);
+    BOOL ok = WriteFile(hLogFile, buf, static_cast<DWORD>(strlen(buf)), &bytesWritten, nullptr);
     FlushFileBuffers(hLogFile);
 }
 
@@ -295,6 +300,8 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
         gDxCtx->Begin(last, mouseX, mouseY);
         gDxCtx->End();
     }
+
+    gDxCtx->Finalize();
 
     CloseHandle(hLogFile);
 
