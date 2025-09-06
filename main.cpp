@@ -782,6 +782,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
     settings.windowless_rendering_enabled = true;
     settings.external_message_pump = true;
     settings.multi_threaded_message_loop = false; // We'll pump it
+    settings.background_color = CefColorSetARGB(230, 230, 255, 255);
     CefInitialize(main_args, settings, app.get(), nullptr);
 
     // Create OSR browser
@@ -790,10 +791,16 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
 
     CefWindowInfo wi;
     wi.SetAsWindowless(gHwnd);
+    wi.shared_texture_enabled = command_line->HasSwitch("shared-texture-enabled");
     CefBrowserSettings bs;
     bs.windowless_frame_rate = 60;
 
-    CefBrowserHost::CreateBrowser(wi, gClient.get(), "https://example.org", bs, nullptr, nullptr);
+    std::string main_url = command_line->GetSwitchValue("url");
+    if (main_url.empty())
+    {
+        main_url = "https://www.google.com";
+    }
+    CefBrowserHost::CreateBrowser(wi, gClient.get(), main_url, bs, nullptr, nullptr);
 
     // Main loop
     MSG msg{};
