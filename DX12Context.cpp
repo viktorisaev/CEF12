@@ -259,16 +259,13 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &upDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadTexResource)));
     uploadTexResource->SetName(L"UploadTexture");
 
-    // move to render per frame
-//    UpdateTexture12(uploadTexResource);
-
-
     //// D3D11-on-12
     D3D_FEATURE_LEVEL fl = D3D_FEATURE_LEVEL_11_0;
     ID3D12CommandQueue* queues[] = { queue.Get() };
     ThrowIfFailed(D3D11On12CreateDevice(device.Get(), 0, &fl, 1, reinterpret_cast<IUnknown**>(queues), 1, 0, &d3d11Device, &d3d11ctx, nullptr));
     //ThrowIfFailed(d3d11Device.As(&d3d11on12));
     //ThrowIfFailed(d3d11on12->CreateWrappedResource(browserTex.Get(), &d3d11Flags, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, IID_PPV_ARGS(&wrappedBrowserTex)));
+
 
     // Create DirectX11 shared texture resource to simulate OnAcceleratedPaint from CEF
     // to be removed later
@@ -342,6 +339,11 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     // create query to wait for the texture to be fully transfered
 //    D3D11_QUERY_DESC queryDesc = { D3D11_QUERY_EVENT, 0 };
     ThrowIfFailed(d3d11Device->CreateQuery(&queryDesc, &query));
+
+    // move to render per frame
+//    UpdateTexture12(uploadTexResource);
+    UpdateTexture11to12(uploadTexResource, 0); // green-ish texture
+
 }
 
 
@@ -563,7 +565,7 @@ void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float m
 
     // update texture per frame
 //    UpdateTexture12(uploadTexResource, milliseconds);   // blue-ish texture
-    UpdateTexture11to12(uploadTexResource, milliseconds); // green-ish texture
+//    UpdateTexture11to12(uploadTexResource, milliseconds); // green-ish texture
 
     CD3DX12_RESOURCE_BARRIER toRT = CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
     cmdList->ResourceBarrier(1, &toRT);
@@ -671,39 +673,40 @@ void DX12Context::End()
 }
 
 // Upload a software bitmap to browserTex (fallback path)
-void DX12Context::UploadSoftwareBitmap(const void* srcBGRA, UINT srcStride) {
+void DX12Context::UploadSoftwareBitmap(const void* srcBGRA, UINT srcStride)
+{
     std::lock_guard<std::mutex> lock(mtx);
-    // Copy to upload heap
-    BYTE* mapped = nullptr;
-    CD3DX12_RANGE r(0, 0);
-    uploadHeap->Map(0, &r, reinterpret_cast<void**>(&mapped));
-    for (UINT y = 0; y < browserH; ++y) {
-        memcpy(mapped + y * ((browserW * 4 + 255) & ~255u),
-            reinterpret_cast<const BYTE*>(srcBGRA) + y * srcStride,
-            browserW * 4);
-    }
-    uploadHeap->Unmap(0, nullptr);
 
-    // Copy into browserTex
+    // Copy to upload heap
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    ThrowIfFailed(d3d11ctx->Map(uploadTex.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+    for (UINT y = 0; y < browserH; ++y) {
+        memcpy(reinterpret_cast<BYTE*>(mapped.pData) + y * ((browserW * 4 + 255) & ~255u), reinterpret_cast<const BYTE*>(srcBGRA) + y * srcStride, browserW * 4);
+    }
+    d3d11ctx->Unmap(uploadTex.Get(), 0);
+
+
+    d3d11ctx->CopyResource(sharedBrowserTex.Get(), uploadTex.Get());
+
+    // flush, or..
+//    d3d11ctx->Flush(); // pushes all pending commands to the GPU
+    // ..wait until the operation is finished
+    d3d11ctx->End(query.Get());
+    while (S_OK != d3d11ctx->GetData(query.Get(), nullptr, 0, 0)) {
+        Sleep(0); // or yield
+    }
+
     ThrowIfFailed(alloc[frameIndex]->Reset());
     ThrowIfFailed(cmdList->Reset(alloc[frameIndex].Get(), nullptr));
-    D3D12_SUBRESOURCE_DATA sub{};
-    sub.pData = mapped; // mapped is nullptr now; but UpdateSubresources copies from CPU pointer argument; instead use CopyTextureRegion with placed footprint
-    // Better: use CopyTextureRegion from upload heap footprint
-    D3D12_PLACED_SUBRESOURCE_FOOTPRINT fp{};
-    UINT rows; UINT64 rowSize, total;
-    D3D12_RESOURCE_DESC td = browserTex->GetDesc();
-    device->GetCopyableFootprints(&td, 0, 1, 0, &fp, &rows, &rowSize, &total);
 
-    D3D12_TEXTURE_COPY_LOCATION dst{ browserTex.Get(), D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX };
-    dst.SubresourceIndex = 0;
-    D3D12_TEXTURE_COPY_LOCATION src{ uploadHeap.Get(), D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT };
-    src.PlacedFootprint = fp;
+    //CD3DX12_RESOURCE_BARRIER texBarrierBefore11 = CD3DX12_RESOURCE_BARRIER::Transition(sharedTex12.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    //cmdList->ResourceBarrier(1, &texBarrierBefore11);
+    CD3DX12_RESOURCE_BARRIER texBarrierBefore12 = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+    cmdList->ResourceBarrier(1, &texBarrierBefore12);
+    cmdList->CopyResource(browserTex.Get(), sharedTex12.Get());
+    CD3DX12_RESOURCE_BARRIER texBarrierAfter12 = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    cmdList->ResourceBarrier(1, &texBarrierAfter12);
 
-    cmdList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-
-    CD3DX12_RESOURCE_BARRIER toSRV = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    cmdList->ResourceBarrier(1, &toSRV);
     ThrowIfFailed(cmdList->Close());
     ID3D12CommandList* lists[] = { cmdList.Get() };
     queue->ExecuteCommandLists(1, lists);

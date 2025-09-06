@@ -29,6 +29,7 @@
 #include "include/wrapper/cef_helpers.h"
 #include <include/cef_version_info.h>
 #include <include/cef_crash_util.h>
+#include <include/wrapper/cef_message_router.h>
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "d3d11.lib")
@@ -408,6 +409,188 @@ private:
 
 
 
+// Client app implementation for the renderer process.
+class ClientAppRenderer : public CefApp, public CefRenderProcessHandler, public CefLoadHandler {
+public:
+    //// Interface for renderer delegates. All Delegates must be returned via
+    //// CreateDelegates. Do not perform work in the Delegate
+    //// constructor. See CefRenderProcessHandler for documentation.
+    //class Delegate : public virtual CefBaseRefCounted {
+    //public:
+    //    virtual void OnWebKitInitialized(CefRefPtr<ClientAppRenderer> app) {}
+
+    //    virtual void OnBrowserCreated(CefRefPtr<ClientAppRenderer> app,
+    //        CefRefPtr<CefBrowser> browser,
+    //        CefRefPtr<CefDictionaryValue> extra_info) {}
+
+    //    virtual void OnBrowserDestroyed(CefRefPtr<ClientAppRenderer> app,
+    //        CefRefPtr<CefBrowser> browser) {}
+
+    //    virtual CefRefPtr<CefLoadHandler> GetLoadHandler(
+    //        CefRefPtr<ClientAppRenderer> app) {
+    //        return nullptr;
+    //    }
+
+    //    virtual void OnContextCreated(CefRefPtr<ClientAppRenderer> app,
+    //        CefRefPtr<CefBrowser> browser,
+    //        CefRefPtr<CefFrame> frame,
+    //        CefRefPtr<CefV8Context> context) {}
+
+    //    virtual void OnContextReleased(CefRefPtr<ClientAppRenderer> app,
+    //        CefRefPtr<CefBrowser> browser,
+    //        CefRefPtr<CefFrame> frame,
+    //        CefRefPtr<CefV8Context> context) {}
+
+    //    virtual void OnUncaughtException(CefRefPtr<ClientAppRenderer> app,
+    //        CefRefPtr<CefBrowser> browser,
+    //        CefRefPtr<CefFrame> frame,
+    //        CefRefPtr<CefV8Context> context,
+    //        CefRefPtr<CefV8Exception> exception,
+    //        CefRefPtr<CefV8StackTrace> stackTrace) {}
+
+    //    virtual void OnFocusedNodeChanged(CefRefPtr<ClientAppRenderer> app,
+    //        CefRefPtr<CefBrowser> browser,
+    //        CefRefPtr<CefFrame> frame,
+    //        CefRefPtr<CefDOMNode> node) {}
+
+    //    // Called when a process message is received. Return true if the message was
+    //    // handled and should not be passed on to other handlers. Delegates
+    //    // should check for unique message names to avoid interfering with each
+    //    // other.
+    //    virtual bool OnProcessMessageReceived(
+    //        CefRefPtr<ClientAppRenderer> app,
+    //        CefRefPtr<CefBrowser> browser,
+    //        CefRefPtr<CefFrame> frame,
+    //        CefProcessId source_process,
+    //        CefRefPtr<CefProcessMessage> message) {
+    //        return false;
+    //    }
+    //};
+
+    //typedef std::set<CefRefPtr<Delegate>> DelegateSet;
+
+    ClientAppRenderer();
+
+private:
+    // Creates all of the Delegate objects. Implemented by cefclient in
+    // client_app_delegates_renderer.cc
+//    static void CreateDelegates(DelegateSet& delegates);
+
+    // CefApp methods.
+    CefRefPtr<CefRenderProcessHandler> GetRenderProcessHandler() override
+    {
+        return this;
+    }
+
+    // CefRenderProcessHandler methods.
+    void OnWebKitInitialized() override;
+    void OnBrowserCreated(CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefDictionaryValue> extra_info) override;
+    void OnBrowserDestroyed(CefRefPtr<CefBrowser> browser) override;
+    CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
+    void OnContextCreated(CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        CefRefPtr<CefV8Context> context) override;
+    void OnContextReleased(CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        CefRefPtr<CefV8Context> context) override;
+    void OnUncaughtException(CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        CefRefPtr<CefV8Context> context,
+        CefRefPtr<CefV8Exception> exception,
+        CefRefPtr<CefV8StackTrace> stackTrace) override;
+    void OnFocusedNodeChanged(CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        CefRefPtr<CefDOMNode> node) override;
+    bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        CefProcessId source_process,
+        CefRefPtr<CefProcessMessage> message) override;
+
+private:
+    // Set of supported Delegates.
+//    DelegateSet delegates_;
+
+     // Handles the renderer side of query routing.
+    CefRefPtr<CefMessageRouterRendererSide> message_router_;
+
+    bool last_node_is_editable_ = false;
+
+
+    IMPLEMENT_REFCOUNTING(ClientAppRenderer);
+    DISALLOW_COPY_AND_ASSIGN(ClientAppRenderer);
+};
+
+
+ClientAppRenderer::ClientAppRenderer() = default;
+
+void ClientAppRenderer::OnWebKitInitialized() 
+{
+    if (CefCrashReportingEnabled()) {
+        // Set some crash keys for testing purposes. Keys must be defined in the
+        // "crash_reporter.cfg" file. See cef_crash_util.h for details.
+        CefSetCrashKeyValue("testkey_small1", "value1_small_renderer");
+        CefSetCrashKeyValue("testkey_small2", "value2_small_renderer");
+        CefSetCrashKeyValue("testkey_medium1", "value1_medium_renderer");
+        CefSetCrashKeyValue("testkey_medium2", "value2_medium_renderer");
+        CefSetCrashKeyValue("testkey_large1", "value1_large_renderer");
+        CefSetCrashKeyValue("testkey_large2", "value2_large_renderer");
+    }
+
+    // Create the renderer-side router for query handling.
+    CefMessageRouterConfig config;
+    message_router_ = CefMessageRouterRendererSide::Create(config);
+}
+
+void ClientAppRenderer::OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context) 
+{
+    message_router_->OnContextCreated(browser, frame, context);
+}
+
+void ClientAppRenderer::OnContextReleased( CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefV8Context> context) 
+{
+    message_router_->OnContextReleased(browser, frame, context);
+}
+
+void ClientAppRenderer::OnFocusedNodeChanged(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefRefPtr<CefDOMNode> node) 
+{
+    bool is_editable = (node.get() && node->IsEditable());
+    if (is_editable != last_node_is_editable_) {
+        // Notify the browser of the change in focused element type.
+        last_node_is_editable_ = is_editable;
+        //CefRefPtr<CefProcessMessage> message = CefProcessMessage::Create(kFocusedNodeChangedMessage);
+        //message->GetArgumentList()->SetBool(0, is_editable);
+        //frame->SendProcessMessage(PID_BROWSER, message);
+    }
+}
+
+bool ClientAppRenderer::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, CefProcessId source_process, CefRefPtr<CefProcessMessage> message)
+{
+    return message_router_->OnProcessMessageReceived(browser, frame, source_process, message);
+}
+
+void ClientAppRenderer::OnUncaughtException(CefRefPtr<CefBrowser> browser,
+    CefRefPtr<CefFrame> frame,
+    CefRefPtr<CefV8Context> context,
+    CefRefPtr<CefV8Exception> exception,
+    CefRefPtr<CefV8StackTrace> stackTrace)
+{
+
+}
+
+
+void ClientAppRenderer::OnBrowserCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefDictionaryValue> extra_info)
+{
+}
+
+void ClientAppRenderer::OnBrowserDestroyed(CefRefPtr<CefBrowser> browser)
+{
+}
+
+
+
+
+
 class CefOSRClient : public CefClient, public CefLifeSpanHandler
 {
 public:
@@ -536,7 +719,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
     }
     else if (processType == 1) //client::ClientApp::RendererProcess
     {
-    //    app = new client::ClientAppRenderer();
+        app = new ClientAppRenderer();
     }
     else if (processType == 3) //client::ClientApp::OtherProcess
     {
@@ -631,7 +814,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
             DispatchMessage(&msg);
         }
         // Pump CEF work
-//CEF        CefDoMessageLoopWork();
+        CefDoMessageLoopWork();
 
         // mouse position
         POINT pt;
@@ -659,7 +842,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
     // Shutdown CEF
     if (gClient && gClient->browser())
     {
-//CEF        gClient->browser()->GetHost()->CloseBrowser(true);
+        gClient->browser()->GetHost()->CloseBrowser(true);
     }
     CefShutdown();
 

@@ -78,7 +78,7 @@ struct DX12Context {
     D3D12_GPU_DESCRIPTOR_HANDLE srvGpu{};
 
     // Upload heap for software path
-    ComPtr<ID3D12Resource> uploadHeap;
+//    ComPtr<ID3D12Resource> uploadHeap;
 
     // D3D11-on-12
     ComPtr<ID3D11Device> d3d11Device;
