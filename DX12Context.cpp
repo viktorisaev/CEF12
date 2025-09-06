@@ -263,42 +263,10 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     D3D_FEATURE_LEVEL fl = D3D_FEATURE_LEVEL_11_0;
     ID3D12CommandQueue* queues[] = { queue.Get() };
     ThrowIfFailed(D3D11On12CreateDevice(device.Get(), 0, &fl, 1, reinterpret_cast<IUnknown**>(queues), 1, 0, &d3d11Device, &d3d11ctx, nullptr));
-    //ThrowIfFailed(d3d11Device.As(&d3d11on12));
-    //ThrowIfFailed(d3d11on12->CreateWrappedResource(browserTex.Get(), &d3d11Flags, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, IID_PPV_ARGS(&wrappedBrowserTex)));
 
 
     // Create DirectX11 shared texture resource to simulate OnAcceleratedPaint from CEF
     // to be removed later
-
-//    D3D_FEATURE_LEVEL           featureLevel;
-//
-//    UINT createDeviceFlags = 0;
-//#ifdef _DEBUG
-//    createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG; // Enable debug layer (if installed)
-//#endif
-//
-//    // List of feature levels to try, highest first
-//    D3D_FEATURE_LEVEL featureLevels[] =
-//    {
-//        D3D_FEATURE_LEVEL_11_1, // Will fail gracefully if not supported
-//        D3D_FEATURE_LEVEL_11_0,
-//        D3D_FEATURE_LEVEL_10_1,
-//        D3D_FEATURE_LEVEL_10_0
-//    };
-//
-//    ThrowIfFailed(D3D11CreateDevice(
-//        nullptr,                    // Use default adapter
-//        D3D_DRIVER_TYPE_HARDWARE,    // Hardware acceleration
-//        nullptr,                     // No software rasterizer DLL
-//        createDeviceFlags,           // Flags
-//        featureLevels,               // Feature levels array
-//        _countof(featureLevels),     // Number of feature levels
-//        D3D11_SDK_VERSION,           // Always this constant
-//        &d3d11Device,                     // [out] Device
-//        &featureLevel,               // [out] Chosen feature level
-//        &context                     // [out] Immediate context
-//    ));
-
 
     D3D11_TEXTURE2D_DESC desc = {};
 
@@ -330,7 +298,6 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
 
     ThrowIfFailed(d3d11Device->CreateTexture2D(&desc, nullptr, &uploadTex));
 
-
     // create handle to share
     ThrowIfFailed(sharedBrowserTex.As(&dxgiRes));
 
@@ -343,7 +310,6 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     // move to render per frame
 //    UpdateTexture12(uploadTexResource);
     UpdateTexture11to12(uploadTexResource, 0); // green-ish texture
-
 }
 
 
@@ -410,7 +376,6 @@ void DX12Context::UpdateTexture11to12(Microsoft::WRL::ComPtr<ID3D12Resource>& up
     // 2) transfer upload to final texture sharedBrowserTex
     // wait for the operation to be fully finished before "pass" the DirectX11 texture to DirectX12
 
-
 //    d3d11ctx->Begin(query.Get());
     d3d11ctx->CopyResource(sharedBrowserTex.Get(), uploadTex.Get());
 
@@ -422,12 +387,9 @@ void DX12Context::UpdateTexture11to12(Microsoft::WRL::ComPtr<ID3D12Resource>& up
         Sleep(0); // or yield
     }
 
-
     // 3) get the DirectX11 texture in DirectX12
     device->OpenSharedHandle(sharedBrowserHandle, IID_PPV_ARGS(&sharedTex12));
 
-    //CD3DX12_RESOURCE_BARRIER texBarrierBefore11 = CD3DX12_RESOURCE_BARRIER::Transition(sharedTex12.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE);
-    //cmdList->ResourceBarrier(1, &texBarrierBefore11);
     CD3DX12_RESOURCE_BARRIER texBarrierBefore12 = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
     cmdList->ResourceBarrier(1, &texBarrierBefore12);
     cmdList->CopyResource(browserTex.Get(), sharedTex12.Get());
@@ -685,7 +647,6 @@ void DX12Context::UploadSoftwareBitmap(const void* srcBGRA, UINT srcStride)
     }
     d3d11ctx->Unmap(uploadTex.Get(), 0);
 
-
     d3d11ctx->CopyResource(sharedBrowserTex.Get(), uploadTex.Get());
 
     // flush, or..
@@ -699,8 +660,6 @@ void DX12Context::UploadSoftwareBitmap(const void* srcBGRA, UINT srcStride)
     ThrowIfFailed(alloc[frameIndex]->Reset());
     ThrowIfFailed(cmdList->Reset(alloc[frameIndex].Get(), nullptr));
 
-    //CD3DX12_RESOURCE_BARRIER texBarrierBefore11 = CD3DX12_RESOURCE_BARRIER::Transition(sharedTex12.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE);
-    //cmdList->ResourceBarrier(1, &texBarrierBefore11);
     CD3DX12_RESOURCE_BARRIER texBarrierBefore12 = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
     cmdList->ResourceBarrier(1, &texBarrierBefore12);
     cmdList->CopyResource(browserTex.Get(), sharedTex12.Get());
@@ -714,20 +673,24 @@ void DX12Context::UploadSoftwareBitmap(const void* srcBGRA, UINT srcStride)
 }
 
 // Copy from D3D11 shared texture into wrappedBrowserTex (GPU path)
-void DX12Context::CopyFromD3D11Shared(ID3D11Texture2D* srcTex) {
+void DX12Context::CopyFromD3D11Shared(HANDLE sharedBrowserHandle)
+{
     std::lock_guard<std::mutex> lock(mtx);
-    // Acquire wrapped resource, copy, release, flush
-    ID3D11Resource* wrapped = wrappedBrowserTex.Get();
-    d3d11on12->AcquireWrappedResources(&wrapped, 1);
-    d3d11ctx->CopyResource(wrapped, srcTex);
-    d3d11on12->ReleaseWrappedResources(&wrapped, 1);
-    d3d11ctx->Flush();
 
-    // Ensure DX12 resource is ready as SRV
+    // very quickli copy the DirectX11 texture to DirectX12 browser texture
+    // there is no sync possible, so just do it.
+
+    ThrowIfFailed(device->OpenSharedHandle(sharedBrowserHandle, IID_PPV_ARGS(&sharedTex12)));
+
     ThrowIfFailed(alloc[frameIndex]->Reset());
     ThrowIfFailed(cmdList->Reset(alloc[frameIndex].Get(), nullptr));
-    CD3DX12_RESOURCE_BARRIER toSRV = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    cmdList->ResourceBarrier(1, &toSRV);
+
+    CD3DX12_RESOURCE_BARRIER texBarrierBefore12 = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+    cmdList->ResourceBarrier(1, &texBarrierBefore12);
+    cmdList->CopyResource(browserTex.Get(), sharedTex12.Get());
+    CD3DX12_RESOURCE_BARRIER texBarrierAfter12 = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    cmdList->ResourceBarrier(1, &texBarrierAfter12);
+
     ThrowIfFailed(cmdList->Close());
     ID3D12CommandList* lists[] = { cmdList.Get() };
     queue->ExecuteCommandLists(1, lists);

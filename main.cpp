@@ -381,12 +381,7 @@ public:
         }
         // Open the shared handle as an ID3D11Texture2D on our D3D11 device
         HANDLE h = reinterpret_cast<HANDLE>(info.shared_texture_handle);
-        ComPtr<ID3D11Texture2D> src;
-        HRESULT hr = gDX->d3d11Device->OpenSharedResource(h, __uuidof(ID3D11Texture2D), (void**)src.GetAddressOf());
-        if (SUCCEEDED(hr) && src)
-        {
-            gDX->CopyFromD3D11Shared(src.Get());
-        }
+        gDX->CopyFromD3D11Shared(h);
     }
 
     bool GetScreenInfo(CefRefPtr<CefBrowser>, CefScreenInfo& info) override

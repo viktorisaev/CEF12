@@ -113,7 +113,7 @@ struct DX12Context {
     void Begin(std::chrono::steady_clock::time_point timeStamp, float mouseX, float mouseY);
     void End();
     void UploadSoftwareBitmap(const void* srcBGRA, UINT srcStride);
-    void CopyFromD3D11Shared(ID3D11Texture2D* srcTex);
+    void CopyFromD3D11Shared(HANDLE sharedBrowserHandle);
 
     static void ThrowIfFailed(HRESULT hr) {
         if (FAILED(hr)) { throw std::runtime_error("HRESULT failed"); }
