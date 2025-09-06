@@ -397,6 +397,74 @@ void DX12Context::UpdateTexture11to12(Microsoft::WRL::ComPtr<ID3D12Resource>& up
     cmdList->ResourceBarrier(1, &texBarrierAfter12);
 }
 
+void DX12Context::UpdateTexture11to12WithMouse(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds, float mouseX, float mouseY)
+{
+    // 1) populate DirectX11 upload texture with data
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    ThrowIfFailed(d3d11ctx->Map(uploadTex.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+
+    // mapped.pData points to the first row
+    // mapped.RowPitch is the number of bytes per row (may be > width * bytesPerPixel)
+
+    uint32_t* p = reinterpret_cast<uint32_t*>(mapped.pData);
+    if (p)
+    {
+        // fill texture with something
+        for (UINT h = 0; h < browserH; ++h)
+        {
+            for (UINT v = 0; v < browserW; ++v)
+            {
+                DirectX::XMFLOAT2 pos = DirectX::XMFLOAT2(
+                    float(2 * int(v) - int(browserW)) / float(browserW) - mouseX,
+                    float(2 * int(h) - int(browserH)) / float(browserH) - mouseY
+                );
+                DirectX::XMVECTOR vec = DirectX::XMLoadFloat2(&pos);
+
+                DirectX::XMVECTOR lenV = DirectX::XMVector2Length(vec);
+                float len = DirectX::XMVectorGetX(lenV);
+
+                uint32_t c = 0xFFFFFFFF;    // white by default
+
+                if (len > 0.017)
+                {
+                    c =
+                        0xFF << 24
+                        | ((0xFF * h) / browserH) << 16
+                        | (byte(((milliseconds / 8) % 256) + (h * v) / 32)) << 8
+                        | ((0xFF * v) / browserW)
+                        ;
+                }
+                p[h * (rowPitch / 4) + v] = c;
+            }
+        }
+    }
+    d3d11ctx->Unmap(uploadTex.Get(), 0);
+
+
+    // 2) transfer upload to final texture sharedBrowserTex
+    // wait for the operation to be fully finished before "pass" the DirectX11 texture to DirectX12
+
+//    d3d11ctx->Begin(query.Get());
+    d3d11ctx->CopyResource(sharedBrowserTex.Get(), uploadTex.Get());
+
+    // flush, or..
+//    d3d11ctx->Flush(); // pushes all pending commands to the GPU
+    // ..wait until the operation is finished
+    d3d11ctx->End(query.Get());
+    while (S_OK != d3d11ctx->GetData(query.Get(), nullptr, 0, 0)) {
+        Sleep(0); // or yield
+    }
+
+    // 3) get the DirectX11 texture in DirectX12
+    device->OpenSharedHandle(sharedBrowserHandle, IID_PPV_ARGS(&sharedTex12));
+
+    CD3DX12_RESOURCE_BARRIER texBarrierBefore12 = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+    cmdList->ResourceBarrier(1, &texBarrierBefore12);
+    cmdList->CopyResource(browserTex.Get(), sharedTex12.Get());
+    CD3DX12_RESOURCE_BARRIER texBarrierAfter12 = CD3DX12_RESOURCE_BARRIER::Transition(browserTex.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    cmdList->ResourceBarrier(1, &texBarrierAfter12);
+}
+
 
 
 void DX12Context::UpdateTexture12(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds)
@@ -528,6 +596,7 @@ void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float m
     // update texture per frame
 //    UpdateTexture12(uploadTexResource, milliseconds);   // blue-ish texture
 //    UpdateTexture11to12(uploadTexResource, milliseconds); // green-ish texture
+    UpdateTexture11to12WithMouse(uploadTexResource, milliseconds, mouseX, mouseY); // green-ish texture with mouse dot
 
     CD3DX12_RESOURCE_BARRIER toRT = CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
     cmdList->ResourceBarrier(1, &toRT);
