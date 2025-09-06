@@ -26,6 +26,7 @@
 #include "include/cef_render_handler.h"
 #include "include/cef_command_line.h"
 #include "include/wrapper/cef_helpers.h"
+#include <include/cef_version_info.h>
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "d3d11.lib")
@@ -47,6 +48,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 // Global access to DX for render handler (simple for demo)
 static DX12Context* gDX = nullptr;
 static HWND gHwnd = nullptr;
+
+
+
+
 
 class RenderHandler : public CefRenderHandler {
 public:
@@ -101,6 +106,10 @@ private:
     int w_, h_;
 };
 
+
+
+
+
 class CefOSRClient : public CefClient, public CefLifeSpanHandler
 {
 public:
@@ -124,6 +133,11 @@ private:
     CefRefPtr<CefBrowser> browser_;
 };
 
+
+
+
+
+
 class MyApp : public CefApp, public CefBrowserProcessHandler {
 public:
     CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override { return this; }
@@ -135,6 +149,26 @@ public:
     }
     IMPLEMENT_REFCOUNTING(MyApp);
 };
+
+
+
+#pragma region ClientAppOther
+
+// Client app implementation for other process types.
+class ClientAppOther : public CefApp {
+public:
+    ClientAppOther();
+
+private:
+    IMPLEMENT_REFCOUNTING(ClientAppOther);
+    DISALLOW_COPY_AND_ASSIGN(ClientAppOther);
+};
+
+
+ClientAppOther::ClientAppOther() = default;
+
+#pragma endregion  // ClientAppOther
+
 
 // -------------------------- App globals ------------------------------
 
@@ -165,57 +199,75 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
     // log file to log the processes activity.
     // Created in the ProjectDir foilder
     const WCHAR* logFileName = L"myceflog.txt";
-//    hLogFile = CreateFile(logFileName, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, nullptr);
-    //    auto er = GetLastError();
+    hLogFile = CreateFile(logFileName, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, nullptr);
+    auto er = GetLastError();
 
     // Parse command-line arguments.
-//CEF    CefRefPtr<CefCommandLine> command_line = CefCommandLine::CreateCommandLine();
-//CEF    command_line->InitFromString(::GetCommandLineW());
+    CefRefPtr<CefCommandLine> command_line = CefCommandLine::CreateCommandLine();
+    command_line->InitFromString(::GetCommandLineW());
     int processType = -1;
 
-//CEF    if (!command_line->HasSwitch("type"))
+    if (!command_line->HasSwitch("type"))
     {
         processType = 0;
     }
-    //else
-    //{
-    //    const CefString process_type = command_line->GetSwitchValue("type");
-    //    if (process_type == "renderer")
-    //    {
-    //        processType = 1;
-    //    }
-    //    else
-    //    {
-    //        processType = 2;
-    //    }
-    //}
+    else
+    {
+        const CefString process_type = command_line->GetSwitchValue("type");
+        if (process_type == "renderer")
+        {
+            processType = 1;
+        }
+        else
+        {
+            processType = 3;
+        }
+    }
 
-    //if (process_type == client::ClientApp::BrowserProcess)
-    //{
-    //    app = new client::ClientAppBrowser();
-    //}
-    //else if (process_type == client::ClientApp::RendererProcess)
-    //{
-    //    app = new client::ClientAppRenderer();
-    //}
-    //else if (process_type == client::ClientApp::OtherProcess)
-    //{
-    //    app = new client::ClientAppOther();
-    //}
-
-    //if (app)
-    //{
-    //    // Execute the secondary process, if any.
-    //    int exit_code = CefExecuteProcess(main_args, app, sandbox_info);
-    //    if (exit_code >= 0) {
-    //        return exit_code;
-    //    }
-    //}
-
-
+    // store debug info about the process started
     char buf[1024];
-    sprintf_s(buf, "NewProcess (%i)", processType);
-//    AppendToLog(buf);
+    DWORD pid = GetCurrentProcessId();
+    DWORD tid = GetCurrentThreadId();
+    sprintf_s(buf, "NewProcess (%i), PID=%u, TID=%u", processType, pid, tid);
+    AppendToLog(buf);
+
+    CefRefPtr<CefApp> app;
+    if (processType == 0)  // client::ClientApp::BrowserProcess
+    {
+    //    app = new client::ClientAppBrowser();
+    }
+    else if (processType == 1) //client::ClientApp::RendererProcess
+    {
+    //    app = new client::ClientAppRenderer();
+    }
+    else if (processType == 3) //client::ClientApp::OtherProcess
+    {
+        app = new ClientAppOther();
+    }
+
+
+    CefMainArgs main_args(hInst);
+
+    void* sandbox_info = nullptr;
+
+#if defined(CEF_USE_SANDBOX)
+    // Manage the life span of the sandbox information object. This is necessary
+    // for sandbox support on Windows. See cef_sandbox_win.h for complete details.
+    CefScopedSandboxInfo scoped_sandbox;
+    sandbox_info = scoped_sandbox.sandbox_info();
+#endif
+
+    cef_version_info_t version_info = {};
+    CEF_POPULATE_VERSION_INFO(&version_info);
+
+    if (app)
+    {
+        // Execute the secondary process, if any.
+        int exit_code = CefExecuteProcess(main_args, app, sandbox_info);
+        if (exit_code >= 0) {
+            return exit_code;
+        }
+    }
 
 
     // Window
@@ -231,24 +283,25 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
         WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
         rc.right - rc.left, rc.bottom - rc.top, nullptr, nullptr, hInst, nullptr);
 
-    //WCHAR msgString[1024];
-    //swprintf_s(msgString, sizeof(msgString) / sizeof(msgString[0]), L"winmain proc(%i)", process_type);
-    //SetWindowText(gHwnd, msgString);
+    WCHAR msgString[1024];
+    swprintf_s(msgString, sizeof(msgString) / sizeof(msgString[0]), L"winmain proc(%i)", processType);
+    SetWindowText(gHwnd, msgString);
 
     // DX12 init
     gDxCtx = std::make_unique<DX12Context>();
     gDX = gDxCtx.get();
     gDxCtx->Init(gHwnd, DX12Context::gClientWidth, DX12Context::gClientHeight);
 
-    // CEF init
-    CefMainArgs main_args(GetModuleHandle(nullptr));
-    CefRefPtr<MyApp> app(new MyApp());
+    //// CEF init
+    //CefMainArgs main_args(GetModuleHandle(nullptr));
+    //CefRefPtr<MyApp> app(new MyApp());
 
     CefSettings settings;
     settings.no_sandbox = true;
     settings.windowless_rendering_enabled = true;
+    settings.external_message_pump = true;
     settings.multi_threaded_message_loop = false; // We'll pump it
-//CEF    CefInitialize(main_args, settings, app.get(), nullptr);
+    CefInitialize(main_args, settings, app.get(), nullptr);
 
     // Create OSR browser
 //CEF    gRenderHandler = new RenderHandler((int)gDxCtx->browserW, (int)gDxCtx->browserH);
@@ -310,7 +363,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
     {
 //CEF        gClient->browser()->GetHost()->CloseBrowser(true);
     }
-//CEF    CefShutdown();
+    CefShutdown();
 
     return 0;
 }
