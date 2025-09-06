@@ -360,7 +360,14 @@ void DX12Context::UpdateTexture11to12(Microsoft::WRL::ComPtr<ID3D12Resource>& up
     // mapped.pData points to the first row
     // mapped.RowPitch is the number of bytes per row (may be > width * bytesPerPixel)
 
-    uint8_t* p = reinterpret_cast<uint8_t*>(mapped.pData);
+    // Build a rotation matrix (pitch, yaw, roll in radians)
+    DirectX::XMMATRIX rotMat = DirectX::XMMatrixRotationRollPitchYaw(
+        DirectX::XMConvertToRadians(0),   // pitch
+        DirectX::XMConvertToRadians(0),  // yaw
+        DirectX::XMConvertToRadians(float(milliseconds/ 1000.0f) * 45.0f)    // roll
+    );
+
+    uint32_t* p = reinterpret_cast<uint32_t*>(mapped.pData);
     if (p)
     {
         // fill texture with something
@@ -368,10 +375,30 @@ void DX12Context::UpdateTexture11to12(Microsoft::WRL::ComPtr<ID3D12Resource>& up
         {
             for (UINT v = 0; v < browserW; ++v)
             {
-                p[h * rowPitch + v * 4 + 0] = (0xFF * v) / browserW;
-                p[h * rowPitch + v * 4 + 1] = byte(((milliseconds / 8) % 256) + (h * v) / 32);
-                p[h * rowPitch + v * 4 + 2] = (0xFF * h) / browserH;
-                p[h * rowPitch + v * 4 + 3] = 0xFF;
+                DirectX::XMFLOAT2 pos = DirectX::XMFLOAT2(
+                    float(2 * int(v) - int(browserW)) / float(browserW),
+                    float(2 * int(h) - int(browserH)) / float(browserH)
+                );
+                DirectX::XMVECTOR vec = DirectX::XMLoadFloat2(&pos);
+
+                // Transform the vector
+                DirectX::XMVECTOR vRotated = DirectX::XMVector3Transform(vec, rotMat);
+
+                DirectX::XMVECTOR lenV = DirectX::XMVector2Length(vRotated);
+                float len = DirectX::XMVectorGetX(lenV);
+
+                uint32_t c = 0xFFFFFFFF;    // white by default
+
+                if ( (len < 0.35 || len > 0.65f) || DirectX::XMVectorGetX(vRotated) < 0)
+                {
+                     c = 
+                          0xFF                                                  << 24
+                        | ((0xFF * h) / browserH)                               << 16
+                        | (byte(((milliseconds / 8) % 256) + (h * v) / 32))     << 8
+                        | ((0xFF * v) / browserW)
+                    ;
+                }
+                p[h * (rowPitch/4) + v] = c;
             }
         }
     }
