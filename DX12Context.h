@@ -108,7 +108,7 @@ struct DX12Context {
 
     void UpdateTexture12(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds);
     void UpdateTexture11to12(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds);    // we create DirectX11 texture to be used in DirectX12 (like CEF does)
-    void UpdateTexture11to12WithMouse(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds, float mouseX, float mouseY);
+    void UpdateTexture11to12WithMouse(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds, float mouseX, float mouseY, bool mouseValid);
 
     void Resize(UINT w, UINT h);
     void Begin(std::chrono::steady_clock::time_point timeStamp, float mouseX, float mouseY);

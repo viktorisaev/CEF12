@@ -827,8 +827,9 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
             ScreenToClient(gHwnd, &pt);
             // Now pt.x, pt.y are relative to your window
             // normalize -1..+1
-            mouseX = (2.0f * float(pt.x)) / float(DX12Context::gClientWidth) - 1.0f;
-            mouseY = (2.0f * float(pt.y)) / float(DX12Context::gClientHeight) - 1.0f;
+            float minSide = float(std::min(DX12Context::gClientWidth, DX12Context::gClientHeight)); // normalize by axis
+            mouseX = (2.0f * float(pt.x) - float(DX12Context::gClientWidth)) / minSide;
+            mouseY = (2.0f * (-float(pt.y)) + float(DX12Context::gClientHeight)) / minSide;
         }
 
         // Render frame

@@ -182,12 +182,12 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// QUAD
     // Quad vertices (cover most of the window)
     Vertex quad[6] = {
-        {{-0.98f,-0.76f, 0},{0,1}},
-        {{-0.98f, 0.76f, 0},{0,0}},
-        {{ 0.98f,-0.76f, 0},{1,1}},
-        {{ 0.98f,-0.76f, 0},{1,1}},
-        {{-0.98f, 0.76f, 0},{0,0}},
-        {{ 0.98f, 0.76f, 0},{1,0}}
+        {{-1.0f,-1.0f, 0},{0,1}},
+        {{-1.0f, 1.0f, 0},{0,0}},
+        {{ 1.0f,-1.0f, 0},{1,1}},
+        {{ 1.0f,-1.0f, 0},{1,1}},
+        {{-1.0f, 1.0f, 0},{0,0}},
+        {{ 1.0f, 1.0f, 0},{1,0}}
     };
     const UINT vbSize = sizeof(quad);
 
@@ -397,7 +397,7 @@ void DX12Context::UpdateTexture11to12(Microsoft::WRL::ComPtr<ID3D12Resource>& up
     cmdList->ResourceBarrier(1, &texBarrierAfter12);
 }
 
-void DX12Context::UpdateTexture11to12WithMouse(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds, float mouseX, float mouseY)
+void DX12Context::UpdateTexture11to12WithMouse(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds, float mouseX, float mouseY, bool mouseValid)
 {
     // 1) populate DirectX11 upload texture with data
     D3D11_MAPPED_SUBRESOURCE mapped = {};
@@ -425,7 +425,7 @@ void DX12Context::UpdateTexture11to12WithMouse(Microsoft::WRL::ComPtr<ID3D12Reso
 
                 uint32_t c = 0xFFFFFFFF;    // white by default
 
-                if (len > 0.017)
+                if (len > 0.014 || !mouseValid)
                 {
                     c =
                         0xFF << 24
@@ -584,6 +584,38 @@ DirectX::XMMATRIX RotationMatrixFromTwoVectors(DirectX::FXMVECTOR from, DirectX:
 
 
 
+ bool IntersectRayAndPlane(DirectX::XMVECTOR rayDir, DirectX::XMVECTOR rayOrigin, DirectX::XMVECTOR planeNormal, DirectX::XMVECTOR planeOrigin, DirectX::XMVECTOR &intersectionPoint)
+{
+     // Compute dot product between ray direction and plane normal
+     float denom = DirectX::XMVectorGetX(DirectX::XMVector3Dot(rayDir, planeNormal));
+
+     // Check if ray is parallel to the plane
+     if (fabs(denom) < 1e-6f)
+     {
+         return false; // No intersection, ray is parallel
+     }
+
+     // Compute vector from ray origin to a point on the plane
+     DirectX::XMVECTOR diff = DirectX::XMVectorSubtract(planeOrigin, rayOrigin);
+
+     // Compute distance along ray to intersection point
+     float t = DirectX::XMVectorGetX(DirectX::XMVector3Dot(diff, planeNormal)) / denom;
+
+     if (t < 0.0f)
+     {
+         return false; // Intersection is behind the ray origin
+     }
+     else
+     {
+         // Compute intersection point
+         intersectionPoint = DirectX::XMVectorAdd(rayOrigin, DirectX::XMVectorScale(rayDir, t));
+         return true;
+     }
+
+ }
+
+
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// BEGIN DRAW
 void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float mouseX, float mouseY)
 {
@@ -596,7 +628,6 @@ void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float m
     // update texture per frame
 //    UpdateTexture12(uploadTexResource, milliseconds);   // blue-ish texture
 //    UpdateTexture11to12(uploadTexResource, milliseconds); // green-ish texture
-    UpdateTexture11to12WithMouse(uploadTexResource, milliseconds, mouseX, mouseY); // green-ish texture with mouse dot
 
     CD3DX12_RESOURCE_BARRIER toRT = CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
     cmdList->ResourceBarrier(1, &toRT);
@@ -616,33 +647,18 @@ void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float m
 
     cmdList->SetGraphicsRootSignature(rootSig.Get());
 
-    //// Simple ortho MVP
-    //float mvp[16] = {
-    //    1,0,0,0,
-    //    0,1,0,0,
-    //    0,0,1,0,
-    //    0,0,0,1
-    //};
 
     // rotation by mouse
-    DirectX::XMVECTOR mouseVector = DirectX::XMVectorSet(mouseX, -mouseY, RotationStrength, 0.0f);
+    DirectX::XMVECTOR mouseVector = DirectX::XMVectorSet(mouseX, mouseY, RotationStrength, 0.0f);
     DirectX::XMVECTOR normalPlane = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
 
     DirectX::XMMATRIX model = RotationMatrixFromTwoVectors(normalPlane, mouseVector);
+//    DirectX::XMMATRIX model = DirectX::XMMatrixIdentity();    // Debug: flat plane
+//    DirectX::XMMATRIX model = DirectX::XMMatrixRotationNormal(DirectX::XMVectorSet(-1.0f, 0.0f, 0.0f, 0.0f), 45.0*DirectX::XM_PI / 180.0); // Debug: 45 deg
 
-// rotate by timer    DirectX::XMMATRIX model = DirectX::XMMatrixRotationY(DirectX::XMConvertToRadians(milliseconds * 0.06f)); // Move object forward
+    const float SCREEN_DIST = 1.4f; // distance between plane and camera, so zoom in/out the plane on the screen
 
-
-
-    DirectX::XMMATRIX view = DirectX::XMMatrixTranslation(0.0f, 0.0f, 1.0f); // Move object forward
-//    model = DirectX::XMMatrixIdentity();
-
-    //DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(
-    //    DirectX::XMVectorSet(0.0f, 0.0f, -1.0f, 1.0f), // Camera position
-    //    DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f),   // Look at origin
-    //    DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f));  // Up direction
-    //view = DirectX::XMMatrixIdentity();
-
+    DirectX::XMMATRIX view = DirectX::XMMatrixTranslation(0.0f, 0.0f, SCREEN_DIST); // Move object forward
 
     DirectX::XMMATRIX projection = DirectX::XMMatrixPerspectiveFovLH(
         DirectX::XMConvertToRadians(90.0f),         // Field of view
@@ -653,25 +669,39 @@ void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float m
     // Build MVP
     DirectX::XMMATRIX mvpOut = BuildMVP(model, view, projection);
 
-//    mvpOut = DirectX::XMMatrixIdentity();
-
     // Store into a constant buffer-friendly struct
     DirectX::XMFLOAT4X4 mvp;
     DirectX::XMStoreFloat4x4(&mvp, mvpOut);
 
+    // project mouse to 3D plane
+    float mouseXproj = mouseX;
+    float mouseYproj = mouseY;
 
-    //float angle = std::abs((milliseconds * 0.01f) * float(M_PI) / 180.0f); // radians
-    //float c = std::cos(angle);
-    //float s = std::sin(angle);
-    //float mvpOrig[16] = {
-    // c,        0.0f,       s,      0.0f,
-    // 0.0,      1.0f,       0.0f,   0.0f,
-    // -s,       0.0f,       c,      0.0f,
-    // 0.0f,     0.0f,       0.0f,   1.0f,
-    //};
+    //// debug mouse position
+    //CHAR buf[1024];
+    //sprintf_s(buf, 1024, "mx=%.3f, my=%.3f\n", mouseX, mouseY);
+    //OutputDebugStringA(buf);
+
+    DirectX::XMVECTOR mouseRay = DirectX::XMVector3Normalize(DirectX::XMVectorSet(mouseX, mouseY, 1.0f, 0.0f));
+    DirectX::XMVECTOR normalPlaneRotated = DirectX::XMVector3Normalize(DirectX::XMVector3TransformNormal(normalPlane, model));
+    DirectX::XMVECTOR planeOrigin = DirectX::XMVectorSet(0.0f, 0.0f, SCREEN_DIST, 0.0f);
+
+    DirectX::XMVECTOR intersectionPoint;
+    bool isIntersect = IntersectRayAndPlane(mouseRay, DirectX::XMVectorZero(), normalPlaneRotated, planeOrigin, intersectionPoint);
+
+    // project to plane space
+    intersectionPoint = DirectX::XMVectorSet(DirectX::XMVectorGetX(intersectionPoint), DirectX::XMVectorGetY(intersectionPoint), DirectX::XMVectorGetZ(intersectionPoint) - SCREEN_DIST, 0.0f);
+    DirectX::XMMATRIX invModel = DirectX::XMMatrixInverse(nullptr, model);
+
+    DirectX::XMVECTOR intersectionPointInPlane = DirectX::XMVector4Transform(intersectionPoint, invModel);
+
+
+    mouseXproj = DirectX::XMVectorGetX(intersectionPointInPlane);
+    mouseYproj = -DirectX::XMVectorGetY(intersectionPointInPlane);
+    UpdateTexture11to12WithMouse(uploadTexResource, milliseconds, mouseXproj, mouseYproj, isIntersect); // green-ish texture with mouse dot
+
 
     memcpy(cbCpu, &mvp, sizeof(mvp));
-//    memcpy(cbCpu, &mvpOrig, sizeof(mvpOrig));
 
     cmdList->SetGraphicsRootConstantBufferView(0, cb->GetGPUVirtualAddress());
 
