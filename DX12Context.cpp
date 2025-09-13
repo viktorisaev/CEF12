@@ -40,6 +40,7 @@ static const char* g_vs = R"(
 cbuffer CB : register(b0)
 {
   float4x4 mvp;
+  float2   mouse;
 };
 struct VSIn { float3 pos : POSITION; float2 uv : TEXCOORD0; };
 struct VSOut { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; };
@@ -52,12 +53,22 @@ VSOut main(VSIn i) {
 )";
 
 static const char* g_ps = R"(
+cbuffer CB : register(b0)
+{
+  float4x4 mvp;
+  float2   mouse;
+};
 Texture2D tex0 : register(t0);
 SamplerState samp0 : register(s0);
 
 float4 main(float4 pos:SV_POSITION, float2 uv:TEXCOORD0) : SV_Target
 {
-  return tex0.Sample(samp0, uv);
+// mouse pos
+    float d = abs(length(uv - mouse) - 0.012);
+    float c = 1.0 - smoothstep(0.001, 0.002, d);
+    float4 texSmpl = tex0.Sample(samp0, uv);
+    float4 finalColor =max(texSmpl, float4(c, c, 0.0, 0.0));  
+  return finalColor;
 //  return float4(uv.x, uv.y, 1.0f, 1.0f);
 }
 )";
@@ -218,7 +229,7 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     vbView = { vb->GetGPUVirtualAddress(), vbSize, sizeof(Vertex) };
 
     // Constant buffer
-    CD3DX12_RESOURCE_DESC cbDesc = CD3DX12_RESOURCE_DESC::Buffer(256); // one 4x4 matrix
+    CD3DX12_RESOURCE_DESC cbDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(float)*16 + sizeof(float)*2); // one 4x4 matrix + 2 floats (mouse coords)
     ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &cbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&cb)));
     cb->Map(0, nullptr, reinterpret_cast<void**>(&cbCpu));
 
@@ -414,18 +425,18 @@ void DX12Context::UpdateTexture11to12WithMouse(Microsoft::WRL::ComPtr<ID3D12Reso
         {
             for (UINT v = 0; v < browserW; ++v)
             {
-                DirectX::XMFLOAT2 pos = DirectX::XMFLOAT2(
-                    float(2 * int(v) - int(browserW)) / float(browserW) - mouseX,
-                    float(2 * int(h) - int(browserH)) / float(browserH) - mouseY
-                );
-                DirectX::XMVECTOR vec = DirectX::XMLoadFloat2(&pos);
+                //DirectX::XMFLOAT2 pos = DirectX::XMFLOAT2(
+                //    float(2 * int(v) - int(browserW)) / float(browserW) - mouseX,
+                //    float(2 * int(h) - int(browserH)) / float(browserH) - mouseY
+                //);
+                //DirectX::XMVECTOR vec = DirectX::XMLoadFloat2(&pos);
 
-                DirectX::XMVECTOR lenV = DirectX::XMVector2Length(vec);
-                float len = DirectX::XMVectorGetX(lenV);
+                //DirectX::XMVECTOR lenV = DirectX::XMVector2Length(vec);
+                //float len = DirectX::XMVectorGetX(lenV);
 
                 uint32_t c = 0xFFFFFFFF;    // white by default
 
-                if (len > 0.014 || !mouseValid)
+//                if (len > 0.014 || !mouseValid)
                 {
                     c =
                         0xFF << 24
@@ -614,6 +625,13 @@ DirectX::XMMATRIX RotationMatrixFromTwoVectors(DirectX::FXMVECTOR from, DirectX:
 
  }
 
+ // constant buffer: MVP + mouse pos
+ struct CBstruct
+ {
+     DirectX::XMFLOAT4X4 mvp;
+     float mouseX;
+     float mouseY;
+ };
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// BEGIN DRAW
@@ -667,11 +685,11 @@ void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float m
         3.0f);                                                // Far plane
 
     // Build MVP
+    CBstruct cbStruct;
     DirectX::XMMATRIX mvpOut = BuildMVP(model, view, projection);
 
     // Store into a constant buffer-friendly struct
-    DirectX::XMFLOAT4X4 mvp;
-    DirectX::XMStoreFloat4x4(&mvp, mvpOut);
+    DirectX::XMStoreFloat4x4(&cbStruct.mvp, mvpOut);
 
     // project mouse to 3D plane
     float mouseXproj = mouseX;
@@ -700,8 +718,10 @@ void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float m
     mouseYproj = -DirectX::XMVectorGetY(intersectionPointInPlane);
     UpdateTexture11to12WithMouse(uploadTexResource, milliseconds, mouseXproj, mouseYproj, isIntersect); // green-ish texture with mouse dot
 
+    cbStruct.mouseX = (mouseXproj+1.0f)/2.0f;   //-1..+1 => 0..1
+    cbStruct.mouseY = (mouseYproj+1.0f)/2.0f;   //-1..+1 => 0..1
 
-    memcpy(cbCpu, &mvp, sizeof(mvp));
+    memcpy(cbCpu, &cbStruct, sizeof(cbStruct));
 
     cmdList->SetGraphicsRootConstantBufferView(0, cb->GetGPUVirtualAddress());
 
