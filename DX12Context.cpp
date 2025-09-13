@@ -65,9 +65,9 @@ float4 main(float4 pos:SV_POSITION, float2 uv:TEXCOORD0) : SV_Target
 {
 // mouse pos
     float d = abs(length(uv - mouse) - 0.012);
-    float c = 1.0 - smoothstep(0.001, 0.002, d);
+    float c = smoothstep(0.001, 0.002, d);
     float4 texSmpl = tex0.Sample(samp0, uv);
-    float4 finalColor =max(texSmpl, float4(c, c, 0.0, 0.0));  
+    float4 finalColor = texSmpl * c + float4(1.0, 0.419, 0.419, 1.0) * (1.0 - c);
   return finalColor;
 //  return float4(uv.x, uv.y, 1.0f, 1.0f);
 }
@@ -716,7 +716,7 @@ void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float m
 
     mouseXproj = DirectX::XMVectorGetX(intersectionPointInPlane);
     mouseYproj = -DirectX::XMVectorGetY(intersectionPointInPlane);
-    UpdateTexture11to12WithMouse(uploadTexResource, milliseconds, mouseXproj, mouseYproj, isIntersect); // green-ish texture with mouse dot
+//    UpdateTexture11to12WithMouse(uploadTexResource, milliseconds, mouseXproj, mouseYproj, isIntersect); // green-ish texture with mouse dot
 
     cbStruct.mouseX = (mouseXproj+1.0f)/2.0f;   //-1..+1 => 0..1
     cbStruct.mouseY = (mouseYproj+1.0f)/2.0f;   //-1..+1 => 0..1
