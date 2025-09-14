@@ -50,6 +50,16 @@
             background-color: #999;
             color: #fff;
         }
+
+        button {
+            font-size: 3em;
+            padding: 1em 1em;
+        }
+
+        .response {
+            font-size: 2em;
+            color: #666;
+        }
     </style>
 
 
@@ -73,7 +83,7 @@
 
         document.addEventListener('mousemove', function (event) {
             const mousePosDiv = document.getElementById('mousePos');
-            mousePosDiv.textContent = `MousePos x=${event.clientX}, y=${event.clientY}`;
+            mousePosDiv.textContent = `Mouse position: (${event.clientX}, ${event.clientY})`;
         });
 
     </script>
@@ -94,16 +104,14 @@
     </nav>
 
     <main>
-        <h2>Main Content</h2>
-        <p>This is a simple HTML mockup file. You can customize it to suit your needs.</p>
-        <p>Feel free to add more sections, styles, or interactivity using JavaScript.</p>
-
-        <button onclick="handleClick()">Click Me</button>
-        <div id="respo">-</div>
-
+        <h2>Send and receive requests to the container (OnQuery)</h2>
+        <div style="display: flex; align-items: center; gap: 1em;">
+            <button onclick="handleClick()">Click Me</button>
+            <div class="response" id="respo"><- Click the button above to see the current time!</div>
+        </div>
     </main>
 
-    <div id="mousePos">Mouse Position: X = 0, Y = 0</div>
+    <div id="mousePos">-</div>
 
     <footer>
         &copy; 2025 Mock Page Inc.

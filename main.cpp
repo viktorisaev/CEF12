@@ -169,6 +169,15 @@ protected:
         int popup_id) override;
     void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
 
+    virtual bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        CefProcessId source_process,
+        CefRefPtr<CefProcessMessage> message) override
+    {
+        return false;
+    }
+
+
 private:
     // Used to determine the object type.
     //virtual const void* GetTypeKey() const override { return &kTypeKey; }
@@ -586,6 +595,193 @@ void ClientAppRenderer::OnBrowserDestroyed(CefRefPtr<CefBrowser> browser)
 
 
 
+// Handle messages in the browser process. Only accessed on the UI thread.
+class MessageBrowserHandler : public CefMessageRouterBrowserSide::Handler {
+public:
+    typedef std::vector<std::string> NameVector;
+
+    MessageBrowserHandler() 
+    { 
+        CEF_REQUIRE_UI_THREAD(); 
+    }
+
+    MessageBrowserHandler(const MessageBrowserHandler&) = delete;
+    Handler& operator=(const MessageBrowserHandler&) = delete;
+
+    ~MessageBrowserHandler() override
+    {
+        //for (auto& pair : subscription_state_map_)
+        //{
+        //    delete pair.second;
+        //}
+    }
+
+    // Called due to cefQuery execution in config.html.
+    bool OnQuery(CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        int64_t query_id,
+        const CefString& request,
+        bool persistent,
+        CefRefPtr<Callback> callback) override
+    {
+        CEF_REQUIRE_UI_THREAD();
+
+        ///// hack it!!!
+
+        SYSTEMTIME localTime;
+        GetLocalTime(&localTime);
+
+        std::ostringstream oss;
+        oss << "Response to '" << request.ToString() << "':  " << localTime.wHour << ":" << localTime.wMinute << ":" << localTime.wSecond;
+
+        std::string response = oss.str();
+        callback->Success(response);
+        return true;
+
+//        return false;
+    }
+
+    void OnQueryCanceled(CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        int64_t query_id) override
+    {
+        CEF_REQUIRE_UI_THREAD();
+//        RemoveSubscription(browser->GetIdentifier(), query_id);
+    }
+
+private:
+    //// Convert a JSON string to a dictionary value.
+    //static CefRefPtr<CefDictionaryValue> ParseJSON(const CefString& string) {
+    //    CefRefPtr<CefValue> value = CefParseJSON(string, JSON_PARSER_RFC);
+    //    if (value.get() && value->GetType() == VTYPE_DICTIONARY) {
+    //        return value->GetDictionary();
+    //    }
+    //    return nullptr;
+    //}
+
+    //// Verify that |key| exists in |dictionary| and has type |value_type|. Fails
+    //// |callback| and returns false on failure.
+    //static bool VerifyKey(CefRefPtr<CefDictionaryValue> dictionary,
+    //    const char* key,
+    //    cef_value_type_t value_type,
+    //    CefRefPtr<Callback> callback) {
+    //    if (!dictionary->HasKey(key) || dictionary->GetType(key) != value_type) {
+    //        callback->Failure(
+    //            kMessageFormatError,
+    //            "Missing or incorrectly formatted message key: " + std::string(key));
+    //        return false;
+    //    }
+    //    return true;
+    //}
+
+    //static CefRefPtr<CefListValue> MakeListValue(std::vector<CefString> vec) {
+    //    if (vec.empty()) {
+    //        return nullptr;
+    //    }
+    //    auto list = CefListValue::Create();
+    //    list->SetSize(vec.size());
+    //    size_t idx = 0;
+    //    for (const auto& val : vec) {
+    //        list->SetString(idx++, val);
+    //    }
+    //    return list;
+    //}
+
+    //void SendGlobalConfig(CefRefPtr<Callback> callback) {
+    //    std::vector<CefString> switches;
+    //    CefPreferenceManager::GetChromeVariationsAsSwitches(switches);
+    //    std::vector<CefString> strings;
+    //    CefPreferenceManager::GetChromeVariationsAsStrings(strings);
+
+    //    auto payload = CefDictionaryValue::Create();
+
+    //    if (auto list = MakeListValue(switches)) {
+    //        payload->SetList("switches", list);
+    //    }
+    //    else {
+    //        payload->SetNull("switches");
+    //    }
+
+    //    if (auto list = MakeListValue(strings)) {
+    //        payload->SetList("strings", list);
+    //    }
+    //    else {
+    //        payload->SetNull("strings");
+    //    }
+
+    //    SendSuccess(callback, payload);
+    //}
+
+    //// Subscription state associated with a single browser.
+    //struct SubscriptionState {
+    //    int64_t query_id;
+    //    CefRefPtr<PreferenceObserver> global_pref_observer;
+    //    CefRefPtr<CefRegistration> global_pref_registration;
+    //    CefRefPtr<PreferenceObserver> context_pref_observer;
+    //    CefRefPtr<CefRegistration> context_pref_registration;
+    //    CefRefPtr<SettingObserver> context_setting_observer;
+    //    CefRefPtr<CefRegistration> context_setting_registration;
+    //};
+
+    //bool CreateSubscription(CefRefPtr<CefBrowser> browser,
+    //    int64_t query_id,
+    //    CefRefPtr<Callback> callback) {
+    //    const int browser_id = browser->GetIdentifier();
+    //    if (subscription_state_map_.find(browser_id) !=
+    //        subscription_state_map_.end()) {
+    //        // An subscription already exists for this browser.
+    //        return false;
+    //    }
+
+    //    auto global_pref_manager =
+    //        CefPreferenceManager::GetGlobalPreferenceManager();
+    //    auto request_context = browser->GetHost()->GetRequestContext();
+
+    //    SubscriptionState* state = new SubscriptionState();
+    //    state->query_id = query_id;
+
+    //    state->global_pref_observer =
+    //        new PreferenceObserver(global_pref_manager, /*global=*/true, callback);
+    //    state->global_pref_registration =
+    //        global_pref_manager->AddPreferenceObserver(CefString(),
+    //            state->global_pref_observer);
+
+    //    state->context_pref_observer =
+    //        new PreferenceObserver(request_context, /*global=*/false, callback);
+    //    state->context_pref_registration = request_context->AddPreferenceObserver(
+    //        CefString(), state->context_pref_observer);
+
+    //    state->context_setting_observer =
+    //        new SettingObserver(request_context, callback);
+    //    state->context_setting_registration =
+    //        request_context->AddSettingObserver(state->context_setting_observer);
+
+    //    subscription_state_map_[browser_id] = state;
+
+    //    return true;
+    //}
+
+    //void RemoveSubscription(int browser_id, int64_t query_id) {
+    //    SubscriptionStateMap::iterator it =
+    //        subscription_state_map_.find(browser_id);
+    //    if (it != subscription_state_map_.end() &&
+    //        it->second->query_id == query_id) {
+    //        delete it->second;
+    //        subscription_state_map_.erase(it);
+    //    }
+    //}
+
+    //// Map of browser ID to SubscriptionState object.
+    //typedef std::map<int, SubscriptionState*> SubscriptionStateMap;
+    //SubscriptionStateMap subscription_state_map_;
+};
+
+
+MessageBrowserHandler* browser_message_handler;
+
+
+
+
 class CefOSRClient : public CefClient, public CefLifeSpanHandler
 {
 public:
@@ -593,13 +789,43 @@ public:
     CefRefPtr<CefRenderHandler> GetRenderHandler() override { return render_handler_; }
     CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
 
-    void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
+    void OnAfterCreated(CefRefPtr<CefBrowser> browser) override
+    {
         browser_ = browser;
+
+        if (!message_router_)
+        {
+            // Create the browser-side router for query handling.
+            CefMessageRouterConfig config;
+            message_router_ = CefMessageRouterBrowserSide::Create(config);
+
+            browser_message_handler = new MessageBrowserHandler();
+
+            message_router_->AddHandler(browser_message_handler, false);
+        }
     }
 
     bool DoClose(CefRefPtr<CefBrowser>) override { return false; }
 
-    void OnBeforeClose(CefRefPtr<CefBrowser>) override { browser_ = nullptr; }
+    void OnBeforeClose(CefRefPtr<CefBrowser>) override
+    { 
+        message_router_->RemoveHandler(browser_message_handler);
+        delete browser_message_handler;
+
+        message_router_ = nullptr;
+
+        browser_ = nullptr; 
+    }
+
+    virtual bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        CefProcessId source_process,
+        CefRefPtr<CefProcessMessage> message) override
+    {
+        return message_router_->OnProcessMessageReceived(browser, frame, source_process, message);
+    }
+
+
 
     CefRefPtr<CefBrowser> browser() const { return browser_; }
 
@@ -607,6 +833,11 @@ public:
 private:
     CefRefPtr<RenderHandler> render_handler_;
     CefRefPtr<CefBrowser> browser_;
+
+    // Handles the browser side of query routing. The renderer side is handled
+    // in client_renderer.cc.
+    CefRefPtr<CefMessageRouterBrowserSide> message_router_;
+
 };
 
 
@@ -644,6 +875,9 @@ private:
 ClientAppOther::ClientAppOther() = default;
 
 #pragma endregion  // ClientAppOther
+
+
+
 
 
 // -------------------------- App globals ------------------------------
