@@ -67,8 +67,8 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>Debug\libcef_dll_wrapper\Debug\libcef_dll_wrapper.lib;libcef.lib;user32.lib;gdi32.lib;ole32.lib;shell32.lib;advapi32.lib;comdlg32.lib;d3d12.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <DelayLoadDLLs>libcef.dll;chrome_elf.dll;d3dcompiler_47.dll</DelayLoadDLLs>
+      <AdditionalDependencies>libcef.lib;Debug\libcef_dll_wrapper\Debug\libcef_dll_wrapper.lib;user32.lib;gdi32.lib;ole32.lib;shell32.lib;advapi32.lib;comdlg32.lib;d3d12.lib;d3d11.lib;dxgi.lib;d3dcompiler.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <DelayLoadDLLs>libcef.dll;d3dcompiler_47.dll</DelayLoadDLLs>
       <AdditionalLibraryDirectories>$(ProjectDir)CEF\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
@@ -105,7 +105,7 @@ xcopy /y /d "$(ProjectDir)..\CEF\Resources\locales" "$(OutDir)locales\" /E
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="DX12Context.cpp" />
-    <ClCompile Include="DX12Context.h" />
+    <ClInclude Include="DX12Context.h" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
