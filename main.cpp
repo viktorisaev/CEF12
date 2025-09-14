@@ -669,6 +669,8 @@ void AppendToLog(const char* textToAppend)
     FlushFileBuffers(hLogFile);
 }
 
+CefMouseEvent cefMouseEvent;
+Vector2D lastMousePos;
 
 int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
 {
@@ -815,6 +817,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
+
         // Pump CEF work
         CefDoMessageLoopWork();
 
@@ -834,8 +837,14 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
 
         // Render frame
         std::chrono::steady_clock::time_point last = std::chrono::high_resolution_clock::now();
-        gDxCtx->Begin(last, mouseX, mouseY);
+        lastMousePos = gDxCtx->Begin(last, mouseX, mouseY);
         gDxCtx->End();
+
+        // send projected mouse position to CEF + buttons + wheel
+        
+        cefMouseEvent.x = int(lastMousePos.x * gDxCtx->browserW);
+        cefMouseEvent.y = int(lastMousePos.y * gDxCtx->browserH);
+        cefMouseEvent.modifiers = EVENTFLAG_NONE; //EVENTFLAG_LEFT_MOUSE_BUTTON; // optional
     }
 
     gDxCtx->Finalize();
@@ -852,7 +861,8 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
     return 0;
 }
 
-LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
     switch (msg) 
     {
     case WM_SIZE:
@@ -862,9 +872,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             gDxCtx->Resize(DX12Context::gClientWidth, DX12Context::gClientHeight);
         }
         return 0;
-    case WM_LBUTTONDOWN:
-    case WM_LBUTTONUP:
     case WM_MOUSEMOVE:
+        if (gClient) {
+            auto browser = gClient->browser();
+            if (browser) {
+                browser->GetHost()->SendMouseMoveEvent(cefMouseEvent, false);
+            }
+        }
+        break;
     case WM_MOUSEWHEEL:
     case WM_KEYDOWN:
     case WM_KEYUP:
@@ -882,6 +897,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         //        gClient->browser()->GetHost()->SendMouseMoveEvent(me, false);
         //    }
         //}
+        break;
+    case WM_LBUTTONDOWN:
+        if (gClient) {
+            auto browser = gClient->browser();
+            if (browser) {
+                browser->GetHost()->SendMouseClickEvent(cefMouseEvent, MBT_LEFT, false, 1);
+            }
+        }
+        break;
+    case WM_LBUTTONUP:
+        if (gClient) {
+            auto browser = gClient->browser();
+            if (browser) {
+                browser->GetHost()->SendMouseClickEvent(cefMouseEvent, MBT_LEFT, true, 1);
+            }
+        }
         break;
     case WM_DESTROY:
         PostQuitMessage(0);

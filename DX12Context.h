@@ -32,9 +32,16 @@
 using Microsoft::WRL::ComPtr;
 
 
-struct Vertex {
+struct Vertex
+{
     float pos[3];
     float uv[2];
+};
+
+struct Vector2D 
+{
+    float x;
+    float y;
 };
 
 struct DX12Context {
@@ -111,7 +118,7 @@ struct DX12Context {
     void UpdateTexture11to12WithMouse(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds, float mouseX, float mouseY, bool mouseValid);
 
     void Resize(UINT w, UINT h);
-    void Begin(std::chrono::steady_clock::time_point timeStamp, float mouseX, float mouseY);
+    Vector2D Begin(std::chrono::steady_clock::time_point timeStamp, float mouseX, float mouseY);    // returns mouse pos 0..1 both axes
     void End();
     void UploadSoftwareBitmap(const void* srcBGRA, UINT srcStride);
     void CopyFromD3D11Shared(HANDLE sharedBrowserHandle);

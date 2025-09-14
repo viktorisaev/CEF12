@@ -18,20 +18,37 @@
             text-align: center;
         }
 
-        nav {
-            background-color: #f4f4f4;
-            padding: 1em;
-            text-align: center;
-        }
-
-            nav a {
-                margin: 0 1em;
-                text-decoration: none;
-                color: #333;
-            }
-
         main {
             padding: 2em;
+        }
+
+
+        .menu {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex; /* makes it horizontal */
+            background-color: #f8f8f8;
+            justify-content: center;
+        }
+
+        /* Style each menu item */
+        .menu li {
+            margin: 0;
+        }
+
+        /* Style the links */
+        .menu a {
+            display: block;
+            padding: 1em 1.5em;
+            text-decoration: none;
+            color: #333;
+        }
+
+        /* Hover effect */
+        .menu a:hover {
+            background-color: #999;
+            color: #fff;
         }
     </style>
 
@@ -53,6 +70,12 @@
                 },
                 onFailure: function(error_code, error_message) {} });
         }
+
+        document.addEventListener('mousemove', function (event) {
+            const mousePosDiv = document.getElementById('mousePos');
+            mousePosDiv.textContent = `MousePos x=${event.clientX}, y=${event.clientY}`;
+        });
+
     </script>
 
 
@@ -64,9 +87,10 @@
     </header>
 
     <nav>
-        <a href="#">Home</a>
-        <a href="#">About</a>
-        <a href="#">Contact</a>
+        <ul class="menu">
+            <li><a href="#">Home</a></li>
+            <li><a href="#">About</a></li>
+        </ul>
     </nav>
 
     <main>
@@ -78,6 +102,8 @@
         <div id="respo">-</div>
 
     </main>
+
+    <div id="mousePos">Mouse Position: X = 0, Y = 0</div>
 
     <footer>
         &copy; 2025 Mock Page Inc.

@@ -629,13 +629,12 @@ DirectX::XMMATRIX RotationMatrixFromTwoVectors(DirectX::FXMVECTOR from, DirectX:
  struct CBstruct
  {
      DirectX::XMFLOAT4X4 mvp;
-     float mouseX;
-     float mouseY;
+     Vector2D mousePos;
  };
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// BEGIN DRAW
-void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float mouseX, float mouseY)
+ Vector2D DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float mouseX, float mouseY)
 {
     auto duration = timeStamp.time_since_epoch();
     auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
@@ -718,8 +717,10 @@ void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float m
     mouseYproj = -DirectX::XMVectorGetY(intersectionPointInPlane);
 //    UpdateTexture11to12WithMouse(uploadTexResource, milliseconds, mouseXproj, mouseYproj, isIntersect); // green-ish texture with mouse dot
 
-    cbStruct.mouseX = (mouseXproj+1.0f)/2.0f;   //-1..+1 => 0..1
-    cbStruct.mouseY = (mouseYproj+1.0f)/2.0f;   //-1..+1 => 0..1
+    cbStruct.mousePos = Vector2D {
+        (mouseXproj + 1.0f) / 2.0f,   //-1..+1 => 0..1
+        (mouseYproj + 1.0f) / 2.0f   //-1..+1 => 0..1
+    };
 
     memcpy(cbCpu, &cbStruct, sizeof(cbStruct));
 
@@ -731,6 +732,8 @@ void DX12Context::Begin(std::chrono::steady_clock::time_point timeStamp, float m
 
     cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     cmdList->IASetVertexBuffers(0, 1, &vbView);
+
+    return cbStruct.mousePos;
 }
 
 
