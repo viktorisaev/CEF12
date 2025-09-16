@@ -250,7 +250,7 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     td.Height = browserH;
     td.DepthOrArraySize = 1;
     td.MipLevels = 1;
-    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
     td.SampleDesc.Count = 1;
     td.Flags = D3D12_RESOURCE_FLAG_NONE;
     td.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
@@ -286,7 +286,7 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     desc.Height = browserH;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DEFAULT;       // GPU shareable texture!
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
@@ -300,7 +300,7 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     desc.Height = browserH;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DYNAMIC;       // texture to update from CPU side, but not shareable!
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
