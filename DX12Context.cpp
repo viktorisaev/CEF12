@@ -34,6 +34,7 @@ static const float RotationStrength = 8.0f;   // how strong the window reacts on
 
 /*static*/ int DX12Context::gClientWidth = 1280;
 /*static*/ int DX12Context::gClientHeight = 720;
+int gSampleDesc = 4;    // sample desc used for MSAA
 
 
 static const char* g_vs = R"(
@@ -91,6 +92,10 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     browserH = 1024;
 
     UINT flags = 0;
+
+    CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT);
+
 #if defined(_DEBUG)
     {
         ComPtr<ID3D12Debug> dbg;
@@ -128,13 +133,56 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     ThrowIfFailed(device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&rtvHeap)));
     rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
+    //// MSAA heap
+    D3D12_DESCRIPTOR_HEAP_DESC msaaHeapDesc{};
+    msaaHeapDesc.NumDescriptors = kBackBufferCount;
+    msaaHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    ThrowIfFailed(device->CreateDescriptorHeap(&msaaHeapDesc, IID_PPV_ARGS(&msaaHeap)));
+    msaaDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+    D3D12_RESOURCE_DESC msaaDesc = {};
+    msaaDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    msaaDesc.Width = width;
+    msaaDesc.Height = height;
+    msaaDesc.DepthOrArraySize = 1;
+    msaaDesc.MipLevels = 1;
+    msaaDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    msaaDesc.SampleDesc.Count = gSampleDesc;
+    msaaDesc.SampleDesc.Quality = DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN;
+    msaaDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    msaaDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+    D3D12_CLEAR_VALUE clearValue = {};
+    clearValue.Format = msaaDesc.Format;
+    clearValue.Color[0] = 0.05f;
+    clearValue.Color[1] = 0.05f;
+    clearValue.Color[2] = 0.08f;
+    clearValue.Color[3] = 1.0f;
+
+
     // Back buffers
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvH(rtvHeap->GetCPUDescriptorHandleForHeapStart());
+    CD3DX12_CPU_DESCRIPTOR_HANDLE msaaRtvH(msaaHeap->GetCPUDescriptorHandleForHeapStart());
     for (UINT i = 0; i < kBackBufferCount; ++i) {
+        // back buffers
         ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffers[i])));
         device->CreateRenderTargetView(backBuffers[i].Get(), nullptr, rtvH);
+        backBuffers[i]->SetName(L"RTV");
         rtvH.ptr += rtvDescriptorSize;
         ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc[i])));
+
+        // MSAA buffers
+        ThrowIfFailed(device->CreateCommittedResource(
+            &defaultHeap,
+            D3D12_HEAP_FLAG_NONE,
+            &msaaDesc,
+            D3D12_RESOURCE_STATE_RESOLVE_SOURCE,
+            &clearValue,
+            IID_PPV_ARGS(&msaaRenderTargets[i])
+        ));
+        msaaRenderTargets[i]->SetName(L"msaaRT");
+        device->CreateRenderTargetView(msaaRenderTargets[i].Get(), nullptr, msaaRtvH);
+        msaaRtvH.ptr += msaaDescriptorSize;
     }
     ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc[frameIndex].Get(), nullptr, IID_PPV_ARGS(&cmdList)));
     cmdList->Close();
@@ -204,7 +252,8 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     psoDesc.NumRenderTargets = 1;
     psoDesc.RTVFormats[0] = DXGI_FORMAT_B8G8R8A8_UNORM;
-    psoDesc.SampleDesc.Count = 1;
+    psoDesc.SampleDesc.Count = gSampleDesc;
+    psoDesc.SampleDesc.Quality = DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pso)));
 
 
@@ -222,8 +271,6 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
 
     // Upload VB
     ComPtr<ID3D12Resource> vbUpload;
-    CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT);
     CD3DX12_RESOURCE_DESC vbDesc = CD3DX12_RESOURCE_DESC::Buffer(vbSize);
     ThrowIfFailed(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &vbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&vbUpload)));
     ThrowIfFailed(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &vbDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&vb)));
@@ -338,7 +385,7 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
 
     // move to render per frame
 //    UpdateTexture12(uploadTexResource);
-    UpdateTexture11to12(uploadTexResource, 0); // green-ish texture
+//    UpdateTexture11to12(uploadTexResource, 0); // green-ish texture
 }
 
 
@@ -664,13 +711,22 @@ DirectX::XMMATRIX RotationMatrixFromTwoVectors(DirectX::FXMVECTOR from, DirectX:
 //    UpdateTexture12(uploadTexResource, milliseconds);   // blue-ish texture
 //    UpdateTexture11to12(uploadTexResource, milliseconds); // green-ish texture
 
-    CD3DX12_RESOURCE_BARRIER toRT = CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    cmdList->ResourceBarrier(1, &toRT);
+    CD3DX12_RESOURCE_BARRIER toRT1 = CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RESOLVE_DEST);
+    cmdList->ResourceBarrier(1, &toRT1);
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv(rtvHeap->GetCPUDescriptorHandleForHeapStart(), frameIndex, rtvDescriptorSize);
+    CD3DX12_RESOURCE_BARRIER toRT2 = CD3DX12_RESOURCE_BARRIER::Transition(msaaRenderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    cmdList->ResourceBarrier(1, &toRT2);
+
     FLOAT clear[4] = { 0.05f,0.05f,0.08f,1.0f };
-    cmdList->ClearRenderTargetView(rtv, clear, 0, nullptr);
-    cmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+    // no MSAA
+    //    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv(rtvHeap->GetCPUDescriptorHandleForHeapStart(), frameIndex, rtvDescriptorSize);
+    //cmdList->ClearRenderTargetView(rtv, clear, 0, nullptr);
+    //cmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+
+    // with MSAA
+    CD3DX12_CPU_DESCRIPTOR_HANDLE msaartv(msaaHeap->GetCPUDescriptorHandleForHeapStart(), frameIndex, msaaDescriptorSize);
+    cmdList->ClearRenderTargetView(msaartv, clear, 0, nullptr);
+    cmdList->OMSetRenderTargets(1, &msaartv, FALSE, nullptr);
 
     D3D12_VIEWPORT vp{ 0,0,(float)gClientWidth,(float)gClientHeight,-1,1 };
     D3D12_RECT sc{ 0,0,gClientWidth,gClientHeight };
@@ -762,8 +818,15 @@ void DX12Context::End()
 {
     cmdList->DrawInstanced(6, 1, 0, 0);
 
-    CD3DX12_RESOURCE_BARRIER toPresent = CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    //MSAA
+    CD3DX12_RESOURCE_BARRIER toResolve = CD3DX12_RESOURCE_BARRIER::Transition(msaaRenderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
+    cmdList->ResourceBarrier(1, &toResolve);
+
+    cmdList->ResolveSubresource( backBuffers[frameIndex].Get(), 0, msaaRenderTargets[frameIndex].Get(), 0, DXGI_FORMAT_B8G8R8A8_UNORM);
+
+    CD3DX12_RESOURCE_BARRIER toPresent = CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_PRESENT);
     cmdList->ResourceBarrier(1, &toPresent);
+
     ThrowIfFailed(cmdList->Close());
 
     ID3D12CommandList* lists[] = { cmdList.Get() };
@@ -814,7 +877,7 @@ void DX12Context::UploadSoftwareBitmap(const void* srcBGRA, UINT srcStride)
     WaitGPU();
 }
 
-// Copy from D3D11 shared texture into wrappedBrowserTex (GPU path)
+// Copy from D3D11 shared texture into sharedTex12 (GPU path)
 void DX12Context::CopyFromD3D11Shared(HANDLE sharedBrowserHandle)
 {
     std::lock_guard<std::mutex> lock(mtx);

@@ -59,6 +59,9 @@ struct DX12Context {
     ComPtr<ID3D12Resource> backBuffers[kBackBufferCount];
     ComPtr<ID3D12DescriptorHeap> rtvHeap;
     UINT rtvDescriptorSize = 0;
+    ComPtr<ID3D12Resource> msaaRenderTargets[kBackBufferCount];     //MSAA
+    ComPtr<ID3D12DescriptorHeap> msaaHeap;
+    UINT msaaDescriptorSize = 0;
     ComPtr<ID3D12CommandAllocator> alloc[kBackBufferCount];
     ComPtr<ID3D12GraphicsCommandList> cmdList;
     ComPtr<ID3D12Fence> fence;
@@ -100,7 +103,6 @@ struct DX12Context {
 
     ComPtr<ID3D11DeviceContext> d3d11ctx;
     ComPtr<ID3D11On12Device> d3d11on12;
-    ComPtr<ID3D11Resource> wrappedBrowserTex; // D3D11 view of browserTex
 //    D3D11_RESOURCE_FLAGS d3d11Flags{ /*D3D11_BIND_RENDER_TARGET |*/ D3D11_BIND_SHADER_RESOURCE };
 
     D3D11_QUERY_DESC queryDesc = { D3D11_QUERY_EVENT, 0 };

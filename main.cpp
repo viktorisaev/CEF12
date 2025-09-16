@@ -20,6 +20,8 @@
 #include <cassert>
 #include <cmath>
 #include <optional>
+#include <iostream>
+#include <iomanip>
 
 #include "include/cef_app.h"
 #include "include/cef_browser.h"
@@ -633,7 +635,7 @@ public:
         GetLocalTime(&localTime);
 
         std::ostringstream oss;
-        oss << "Response to '" << request.ToString() << "':  " << localTime.wHour << ":" << localTime.wMinute << ":" << localTime.wSecond;
+        oss << "Response to '" << request.ToString() << "':  " << std::setfill('0') << std::setw(2) << localTime.wHour << ":" << std::setfill('0') << std::setw(2) << localTime.wMinute << ":" << std::setfill('0') << std::setw(2) << localTime.wSecond;
 
         std::string response = oss.str();
         callback->Success(response);
