@@ -25,6 +25,7 @@
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
 #include "include/cef_render_handler.h"
+#include <include/cef_display_handler.h>
 #include "include/cef_command_line.h"
 #include "include/wrapper/cef_helpers.h"
 #include <include/cef_version_info.h>
@@ -782,12 +783,13 @@ MessageBrowserHandler* browser_message_handler;
 
 
 
-class CefOSRClient : public CefClient, public CefLifeSpanHandler
+class CefOSRClient : public CefClient, public CefLifeSpanHandler, public CefDisplayHandler/*mouse pointer*/
 {
 public:
     explicit CefOSRClient(CefRefPtr<RenderHandler> rh) : render_handler_(rh) {}
     CefRefPtr<CefRenderHandler> GetRenderHandler() override { return render_handler_; }
     CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
+    CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
 
     void OnAfterCreated(CefRefPtr<CefBrowser> browser) override
     {
@@ -817,7 +819,7 @@ public:
         browser_ = nullptr; 
     }
 
-    virtual bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
+    bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
         CefRefPtr<CefFrame> frame,
         CefProcessId source_process,
         CefRefPtr<CefProcessMessage> message) override
@@ -825,6 +827,28 @@ public:
         return message_router_->OnProcessMessageReceived(browser, frame, source_process, message);
     }
 
+    bool /*CefDisplayHandler*/OnCursorChange(CefRefPtr<CefBrowser> browser,
+        CefCursorHandle cursor,
+        cef_cursor_type_t type,
+        const CefCursorInfo& custom_cursor_info)
+    {
+        LPCTSTR cur = IDC_ARROW;
+
+        switch (type)
+        {
+        case cef_cursor_type_t::CT_HAND:
+            cur = IDC_HAND;
+            break;
+        case cef_cursor_type_t::CT_IBEAM:
+            cur = IDC_IBEAM;
+            break;
+        default:    // including CT_POINTER
+            break;
+        }
+
+        ::SetCursor(::LoadCursor(NULL, cur));
+        return true;
+    }
 
 
     CefRefPtr<CefBrowser> browser() const { return browser_; }
@@ -987,7 +1011,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hInst;
     wc.lpszClassName = kClassName;
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.hCursor = NULL;  // prevent forcing cursor shape on every mouse move LoadCursor(nullptr, IDC_ARROW);
     RegisterClass(&wc);
     RECT rc{ 0,0,DX12Context::gClientWidth,DX12Context::gClientHeight };
     AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
