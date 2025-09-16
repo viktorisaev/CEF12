@@ -120,6 +120,7 @@ struct DX12Context {
     void UpdateTexture11to12WithMouse(Microsoft::WRL::ComPtr<ID3D12Resource>& uploadTexResource, long long milliseconds, float mouseX, float mouseY, bool mouseValid);
 
     void Resize(UINT w, UINT h);
+    void CreateMSAATextures(UINT newWidth, UINT newHeight);  // could be called multipla times, when the window size changed
     Vector2D Begin(std::chrono::steady_clock::time_point timeStamp, float mouseX, float mouseY);    // returns mouse pos 0..1 both axes
     void End();
     void UploadSoftwareBitmap(const void* srcBGRA, UINT srcStride);

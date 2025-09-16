@@ -170,20 +170,11 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
         backBuffers[i]->SetName(L"RTV");
         rtvH.ptr += rtvDescriptorSize;
         ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc[i])));
-
-        // MSAA buffers
-        ThrowIfFailed(device->CreateCommittedResource(
-            &defaultHeap,
-            D3D12_HEAP_FLAG_NONE,
-            &msaaDesc,
-            D3D12_RESOURCE_STATE_RESOLVE_SOURCE,
-            &clearValue,
-            IID_PPV_ARGS(&msaaRenderTargets[i])
-        ));
-        msaaRenderTargets[i]->SetName(L"msaaRT");
-        device->CreateRenderTargetView(msaaRenderTargets[i].Get(), nullptr, msaaRtvH);
-        msaaRtvH.ptr += msaaDescriptorSize;
     }
+
+    // MSAA buffers
+    CreateMSAATextures(width, height);
+
     ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc[frameIndex].Get(), nullptr, IID_PPV_ARGS(&cmdList)));
     cmdList->Close();
 
@@ -595,7 +586,9 @@ void DX12Context::UpdateTexture12(Microsoft::WRL::ComPtr<ID3D12Resource>& upload
 void DX12Context::Resize(UINT w, UINT h)
 {
     if (!device) return;
+    // sync on GPU done
     WaitGPU();
+
     for (UINT i = 0; i < kBackBufferCount; ++i) backBuffers[i].Reset();
     DXGI_SWAP_CHAIN_DESC scd{};
     swapChain->GetDesc(&scd);
@@ -606,6 +599,53 @@ void DX12Context::Resize(UINT w, UINT h)
         ThrowIfFailed(swapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffers[i])));
         device->CreateRenderTargetView(backBuffers[i].Get(), nullptr, rtvH);
         rtvH.ptr += rtvDescriptorSize;
+    }
+
+    // re-create MSAA textures for the changed resolution
+    CreateMSAATextures(w, h);
+}
+
+void DX12Context::CreateMSAATextures(UINT newWidth, UINT newHeight)
+{
+    D3D12_RESOURCE_DESC msaaDesc = {};
+    msaaDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    msaaDesc.Width = newWidth;
+    msaaDesc.Height = newHeight;
+    msaaDesc.DepthOrArraySize = 1;
+    msaaDesc.MipLevels = 1;
+    msaaDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    msaaDesc.SampleDesc.Count = gSampleDesc;
+    msaaDesc.SampleDesc.Quality = DXGI_STANDARD_MULTISAMPLE_QUALITY_PATTERN;
+    msaaDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    msaaDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+    D3D12_CLEAR_VALUE clearValue = {};
+    clearValue.Format = msaaDesc.Format;
+    clearValue.Color[0] = 0.05f;
+    clearValue.Color[1] = 0.05f;
+    clearValue.Color[2] = 0.08f;
+    clearValue.Color[3] = 1.0f;
+
+    CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT);
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE msaaRtvH(msaaHeap->GetCPUDescriptorHandleForHeapStart());
+    for (UINT i = 0; i < kBackBufferCount; ++i) 
+    {
+        // release previous resources
+        msaaRenderTargets[i].Reset();
+
+        // MSAA buffers
+        ThrowIfFailed(device->CreateCommittedResource(
+            &defaultHeap,
+            D3D12_HEAP_FLAG_NONE,
+            &msaaDesc,
+            D3D12_RESOURCE_STATE_RESOLVE_SOURCE,
+            &clearValue,
+            IID_PPV_ARGS(&msaaRenderTargets[i])
+        ));
+        msaaRenderTargets[i]->SetName(L"msaaRT");
+        device->CreateRenderTargetView(msaaRenderTargets[i].Get(), nullptr, msaaRtvH);
+        msaaRtvH.ptr += msaaDescriptorSize;
     }
 }
 
