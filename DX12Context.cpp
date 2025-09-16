@@ -108,7 +108,7 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     DXGI_SWAP_CHAIN_DESC1 sd{};
     sd.Width = width;
     sd.Height = height;
-    sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    sd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
     sd.SampleDesc.Count = 1;
     sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     sd.BufferCount = kBackBufferCount;
@@ -148,13 +148,16 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     // Root signature
     // 1)
     CD3DX12_ROOT_PARAMETER rp[2];
-    rp[0].InitAsConstantBufferView(0);                                                                         // b0
+    rp[0].InitAsConstantBufferView(0);                                                               // b0
     // 2)
     CD3DX12_DESCRIPTOR_RANGE range;
     range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-    rp[1].InitAsDescriptorTable(1, &range, D3D12_SHADER_VISIBILITY_PIXEL);                   // t0
+    rp[1].InitAsDescriptorTable(1, &range, D3D12_SHADER_VISIBILITY_PIXEL);         // t0
     // Sampler
-    CD3DX12_STATIC_SAMPLER_DESC samp(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);                                                  // s0
+    CD3DX12_STATIC_SAMPLER_DESC samp(0,
+        D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT,
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP);                                                                       // s0
     CD3DX12_ROOT_SIGNATURE_DESC rsDesc(2, rp, 1, &samp, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
     ComPtr<ID3DBlob> sig, err;
     ThrowIfFailed(D3D12SerializeRootSignature(&rsDesc, D3D_ROOT_SIGNATURE_VERSION_1, &sig, &err));
@@ -173,19 +176,34 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     D3D12_RASTERIZER_DESC rasterDesc = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     rasterDesc.CullMode = D3D12_CULL_MODE_NONE; // <— disables culling
 
+    D3D12_RENDER_TARGET_BLEND_DESC rtBlendDesc = {};
+    rtBlendDesc.BlendEnable = TRUE;
+    rtBlendDesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+    rtBlendDesc.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+    rtBlendDesc.BlendOp = D3D12_BLEND_OP_ADD;
+    rtBlendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
+    rtBlendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
+    rtBlendDesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    rtBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+    D3D12_BLEND_DESC blendDesc = {};
+    blendDesc.AlphaToCoverageEnable = FALSE;
+    blendDesc.IndependentBlendEnable = FALSE;
+    blendDesc.RenderTarget[0] = rtBlendDesc;
+
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
     psoDesc.pRootSignature = rootSig.Get();
     psoDesc.VS = { vsb->GetBufferPointer(), vsb->GetBufferSize() };
     psoDesc.PS = { psb->GetBufferPointer(), psb->GetBufferSize() };
     psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
     psoDesc.RasterizerState = rasterDesc;
-    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    psoDesc.BlendState = blendDesc;// CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     psoDesc.DepthStencilState.DepthEnable = FALSE;
     psoDesc.DepthStencilState.StencilEnable = FALSE;
     psoDesc.SampleMask = UINT_MAX;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     psoDesc.NumRenderTargets = 1;
-    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    psoDesc.RTVFormats[0] = DXGI_FORMAT_B8G8R8A8_UNORM;
     psoDesc.SampleDesc.Count = 1;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pso)));
 
@@ -715,6 +733,8 @@ DirectX::XMMATRIX RotationMatrixFromTwoVectors(DirectX::FXMVECTOR from, DirectX:
 
     mouseXproj = DirectX::XMVectorGetX(intersectionPointInPlane);
     mouseYproj = -DirectX::XMVectorGetY(intersectionPointInPlane);
+
+    // for debug purposes - fill the test texture
 //    UpdateTexture11to12WithMouse(uploadTexResource, milliseconds, mouseXproj, mouseYproj, isIntersect); // green-ish texture with mouse dot
 
     cbStruct.mousePos = Vector2D {
