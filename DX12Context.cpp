@@ -173,14 +173,22 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
         device->CreateRenderTargetView(backBuffers[i].Get(), nullptr, rtvH);
         backBuffers[i]->SetName(L"RTV");
         rtvH.ptr += rtvDescriptorSize;
+        // command allocator
         ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&alloc[i])));
+        // imgui command allocator
+        ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&imguiCommandAlloc[i])));
     }
 
     // MSAA buffers
     CreateMSAATextures(width, height);
 
     ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, alloc[frameIndex].Get(), nullptr, IID_PPV_ARGS(&cmdList)));
+    cmdList->SetName(L"MainCmdList");
     cmdList->Close();
+
+    ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, imguiCommandAlloc[frameIndex].Get(), nullptr, IID_PPV_ARGS(&imguiCmdList)));
+    imguiCmdList->SetName(L"IMGUICmdList");
+    imguiCmdList->Close();
 
     // Fence
     ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
@@ -387,9 +395,9 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     imguiHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     imguiHeapDesc.NumDescriptors = 1;
     imguiHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    device->CreateDescriptorHeap(&imguiHeapDesc, IID_PPV_ARGS(&g_pd3dSrvDescHeap));
+    device->CreateDescriptorHeap(&imguiHeapDesc, IID_PPV_ARGS(&imguiDescHeap));
 
-    ImGui_ImplDX12_Init(NULL, kBackBufferCount, device.Get(), g_pd3dSrvDescHeap.Get()->GetCPUDescriptorHandleForHeapStart(), g_pd3dSrvDescHeap.Get()->GetGPUDescriptorHandleForHeapStart());
+    ImGui_ImplDX12_Init(NULL, kBackBufferCount, device.Get(), imguiDescHeap.Get()->GetCPUDescriptorHandleForHeapStart(), imguiDescHeap.Get()->GetGPUDescriptorHandleForHeapStart());
 
 }
 
@@ -765,11 +773,10 @@ DirectX::XMMATRIX RotationMatrixFromTwoVectors(DirectX::FXMVECTOR from, DirectX:
 //    UpdateTexture12(uploadTexResource, milliseconds);   // blue-ish texture
 //    UpdateTexture11to12(uploadTexResource, milliseconds); // green-ish texture
 
-    CD3DX12_RESOURCE_BARRIER toRT1 = CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RESOLVE_DEST);
-    cmdList->ResourceBarrier(1, &toRT1);
-
-    CD3DX12_RESOURCE_BARRIER toRT2 = CD3DX12_RESOURCE_BARRIER::Transition(msaaRenderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    cmdList->ResourceBarrier(1, &toRT2);
+    CD3DX12_RESOURCE_BARRIER toRT[] = { 
+        CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RESOLVE_DEST),
+        CD3DX12_RESOURCE_BARRIER::Transition(msaaRenderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET) };
+    cmdList->ResourceBarrier(2, toRT);
 
     FLOAT clear[4] = { 0.05f,0.05f,0.08f,1.0f };
     // no MSAA
@@ -873,25 +880,7 @@ void DX12Context::End()
     // render the browser texture
     cmdList->DrawInstanced(6, 1, 0, 0);
 
-    // ImGui
-    ImGui_ImplDX12_NewFrame(cmdList.Get(), DX12Context::gClientWidth, DX12Context::gClientHeight);
-    // 1. Show a simple window
-    // Tip: if we don't call ImGui::Begin()/ImGui::End() the widgets appears in a window automatically called "Debug"
-    {
-        ImGui::SetNextWindowSize(ImVec2(400, 150), ImGuiSetCond_FirstUseEver);
-        ImGui::Begin("Console output:");
-        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-        ImGui::Text("%i x %i", DX12Context::gClientWidth, DX12Context::gClientHeight);
-        ImGui::End();
-
-        //ImVec4 clear_col = ImColor(114, 144, 154);
-        //ImGui::ColorEdit3("clear color", (float*)&clear_col);
-    }
-    cmdList.Get()->SetDescriptorHeaps(1, g_pd3dSrvDescHeap.GetAddressOf());
-    ImGui::Render();
-
-
-    //MSAA
+    // apply MSAA texture to the back buffer
     CD3DX12_RESOURCE_BARRIER toResolve = CD3DX12_RESOURCE_BARRIER::Transition(msaaRenderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
     cmdList->ResourceBarrier(1, &toResolve);
 
@@ -902,11 +891,77 @@ void DX12Context::End()
 
     ThrowIfFailed(cmdList->Close());
 
-    ID3D12CommandList* lists[] = { cmdList.Get() };
-    queue->ExecuteCommandLists(1, lists);
 
+    // ImGui =====================================================================================================
+    ThrowIfFailed(imguiCommandAlloc[frameIndex]->Reset());
+    ThrowIfFailed(imguiCmdList->Reset(imguiCommandAlloc[frameIndex].Get(), pso.Get()));
+
+    CD3DX12_RESOURCE_BARRIER toRT1 = CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    imguiCmdList->ResourceBarrier(1, &toRT1);
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv(rtvHeap->GetCPUDescriptorHandleForHeapStart(), frameIndex, rtvDescriptorSize);
+//    imguiCmdList->ClearRenderTargetView(rtv, clear, 0, nullptr);  // do not clear the back buffer as we'd like to render ImGui on top of the existing content
+    imguiCmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+
+    D3D12_VIEWPORT vp{ 0,0,(float)gClientWidth,(float)gClientHeight,-1,1 };
+    D3D12_RECT sc{ 0,0,gClientWidth,gClientHeight };
+    imguiCmdList->RSSetViewports(1, &vp);
+    imguiCmdList->RSSetScissorRects(1, &sc);
+
+    ImGui_ImplDX12_NewFrame(imguiCmdList.Get(), DX12Context::gClientWidth, DX12Context::gClientHeight);
+    // Tip: if we don't call ImGui::Begin()/ImGui::End() the widgets appears in a window automatically called "Debug"
+    {
+        ImGui::SetNextWindowSize(ImVec2(400, 150), ImGuiSetCond_FirstUseEver);
+        ImGui::Begin("Console output");
+        ImGui::End();
+
+        ImGuiIO& io = ImGui::GetIO(); // Get screen size from ImGui
+
+        // Set window position and size
+        ImVec2 windowPos = ImVec2(10, io.DisplaySize.y - 30); // 10px from left, 150px tall
+        ImVec2 windowSize = ImVec2(300, 140); // Width and height of the panel
+
+        ImGui::SetNextWindowPos(windowPos, ImGuiSetCond_Always);
+        ImGui::SetNextWindowSize(windowSize, ImGuiSetCond_Always);
+
+        // Set background alpha (0.0f = fully transparent, 1.0f = opaque)
+//        ImGui::SetNextWindowBgAlpha(0.5f); // 50% transparency
+
+        // Begin the window
+        ImGui::Begin("Bottom Left Panel", nullptr,
+            ImGuiWindowFlags_NoTitleBar |
+            ImGuiWindowFlags_NoResize |
+            ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_NoCollapse
+        );
+
+        // Add your UI content here
+        ImGui::Text("%i x %i - %.1f FPS (%.3f ms/frame)", DX12Context::gClientWidth, DX12Context::gClientHeight, ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
+
+        ImGui::End();
+
+    }
+    imguiCmdList.Get()->SetDescriptorHeaps(1, imguiDescHeap.GetAddressOf());
+    ImGui::Render();
+
+    CD3DX12_RESOURCE_BARRIER imguiRB2 = CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    imguiCmdList->ResourceBarrier(1, &imguiRB2);
+
+    ThrowIfFailed(imguiCmdList->Close());
+    // ImGui end =====================================================================================================
+
+
+
+    ID3D12CommandList* lists[] = { cmdList.Get() };
+    queue->ExecuteCommandLists(1, lists);   // render browser part
+
+    lists[0] = imguiCmdList.Get();
+    queue->ExecuteCommandLists(1, lists);   // render imgui on top of previous results
+
+    // present the final back buffer
     ThrowIfFailed(swapChain->Present(1, 0));
 
+    // wait the vertical sync to finish the frame and proceed to the next frame
     WaitGPU();
 
     frameIndex = swapChain->GetCurrentBackBufferIndex();

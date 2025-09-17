@@ -112,7 +112,9 @@ struct DX12Context {
     std::mutex mtx;
 
     // imgui
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>        g_pd3dSrvDescHeap;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> imguiDescHeap;
+    ComPtr<ID3D12CommandAllocator> imguiCommandAlloc[kBackBufferCount];
+    ComPtr<ID3D12GraphicsCommandList> imguiCmdList;
 
 
     void WaitGPU();
