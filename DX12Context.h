@@ -111,6 +111,10 @@ struct DX12Context {
     // Synchronization for copy
     std::mutex mtx;
 
+    // imgui
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>        g_pd3dSrvDescHeap;
+
+
     void WaitGPU();
     void Init(HWND hwnd, UINT width, UINT height);
     void Finalize();

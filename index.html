@@ -87,6 +87,9 @@
             mousePosDiv.textContent = `Mouse position: (${event.clientX}, ${event.clientY})`;
         });
 
+        function handleMouseHover(event) {
+            console.log(`handleMouseHover: ${event.target.id}`);
+        };
     </script>
 
 
@@ -99,8 +102,8 @@
 
     <nav>
         <ul class="menu">
-            <li><a href="#">Home</a></li>
-            <li><a href="#">About</a></li>
+            <li><a id="HOME" href="#" onmouseover="handleMouseHover(event)">Home</a></li>
+            <li><a id="ABOUT" href="#" onmouseover="handleMouseHover(event)">About</a></li>
         </ul>
     </nav>
 

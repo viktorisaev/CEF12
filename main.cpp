@@ -34,6 +34,8 @@
 #include <include/cef_crash_util.h>
 #include <include/wrapper/cef_message_router.h>
 
+#include <imgui.h>
+
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -1017,12 +1019,10 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
     RegisterClass(&wc);
     RECT rc{ 0,0,DX12Context::gClientWidth,DX12Context::gClientHeight };
     AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
-    gHwnd = CreateWindowEx(0, kClassName, L"CEF + DX12 (OSR)",
-        WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
-        rc.right - rc.left, rc.bottom - rc.top, nullptr, nullptr, hInst, nullptr);
+    gHwnd = CreateWindowEx(0, kClassName, L"", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, rc.right - rc.left, rc.bottom - rc.top, nullptr, nullptr, hInst, nullptr);
 
     WCHAR msgString[1024];
-    swprintf_s(msgString, sizeof(msgString) / sizeof(msgString[0]), L"winmain proc(%i)", processType);
+    swprintf_s(msgString, sizeof(msgString) / sizeof(msgString[0]), L"CEF + DX12 (OSR), proc_type=(%i)", processType);
     SetWindowText(gHwnd, msgString);
 
     // DX12 init
@@ -1121,6 +1121,9 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
     return 0;
 }
 
+// handle mouse in imgui
+extern LRESULT ImGui_ImplDX12_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg) 
@@ -1139,6 +1142,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 browser->GetHost()->SendMouseMoveEvent(cefMouseEvent, false);
             }
         }
+
+        ImGui_ImplDX12_WndProcHandler(0, WM_MOUSEMOVE, 0, lParam);
+
         break;
     case WM_MOUSEWHEEL:
     case WM_KEYDOWN:
@@ -1165,6 +1171,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 browser->GetHost()->SendMouseClickEvent(cefMouseEvent, MBT_LEFT, false, 1);
             }
         }
+
+        ImGui_ImplDX12_WndProcHandler(0, msg, 0, 0);
+
         break;
     case WM_LBUTTONUP:
         if (gClient) {
@@ -1173,6 +1182,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 browser->GetHost()->SendMouseClickEvent(cefMouseEvent, MBT_LEFT, true, 1);
             }
         }
+
+        ImGui_ImplDX12_WndProcHandler(0, msg, 0, 0);
+
         break;
     case WM_DESTROY:
         PostQuitMessage(0);

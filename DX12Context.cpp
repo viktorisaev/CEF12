@@ -21,6 +21,10 @@
 
 #include "DX12Context.h"
 
+#include <imgui.h>
+#include <imgui_impl_dx12.h>
+
+
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -377,6 +381,16 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     // move to render per frame
 //    UpdateTexture12(uploadTexResource);
 //    UpdateTexture11to12(uploadTexResource, 0); // green-ish texture
+
+        // imgui
+    D3D12_DESCRIPTOR_HEAP_DESC imguiHeapDesc = {};
+    imguiHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    imguiHeapDesc.NumDescriptors = 1;
+    imguiHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    device->CreateDescriptorHeap(&imguiHeapDesc, IID_PPV_ARGS(&g_pd3dSrvDescHeap));
+
+    ImGui_ImplDX12_Init(NULL, kBackBufferCount, device.Get(), g_pd3dSrvDescHeap.Get()->GetCPUDescriptorHandleForHeapStart(), g_pd3dSrvDescHeap.Get()->GetGPUDescriptorHandleForHeapStart());
+
 }
 
 
@@ -856,7 +870,26 @@ DirectX::XMMATRIX RotationMatrixFromTwoVectors(DirectX::FXMVECTOR from, DirectX:
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// END DRAW
 void DX12Context::End()
 {
+    // render the browser texture
     cmdList->DrawInstanced(6, 1, 0, 0);
+
+    // ImGui
+    ImGui_ImplDX12_NewFrame(cmdList.Get(), DX12Context::gClientWidth, DX12Context::gClientHeight);
+    // 1. Show a simple window
+    // Tip: if we don't call ImGui::Begin()/ImGui::End() the widgets appears in a window automatically called "Debug"
+    {
+        ImGui::SetNextWindowSize(ImVec2(400, 150), ImGuiSetCond_FirstUseEver);
+        ImGui::Begin("Console output:");
+        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        ImGui::Text("%i x %i", DX12Context::gClientWidth, DX12Context::gClientHeight);
+        ImGui::End();
+
+        //ImVec4 clear_col = ImColor(114, 144, 154);
+        //ImGui::ColorEdit3("clear color", (float*)&clear_col);
+    }
+    cmdList.Get()->SetDescriptorHeaps(1, g_pd3dSrvDescHeap.GetAddressOf());
+    ImGui::Render();
+
 
     //MSAA
     CD3DX12_RESOURCE_BARRIER toResolve = CD3DX12_RESOURCE_BARRIER::Transition(msaaRenderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
