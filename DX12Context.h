@@ -128,7 +128,7 @@ struct DX12Context {
     void Resize(UINT w, UINT h);
     void CreateMSAATextures(UINT newWidth, UINT newHeight);  // could be called multipla times, when the window size changed
     Vector2D Begin(std::chrono::steady_clock::time_point timeStamp, float mouseX, float mouseY);    // returns mouse pos 0..1 both axes
-    void End();
+    void End(const std::vector<std::string>& console_messages_);
     void UploadSoftwareBitmap(const void* srcBGRA, UINT srcStride);
     void CopyFromD3D11Shared(HANDLE sharedBrowserHandle);
 

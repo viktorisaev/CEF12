@@ -943,7 +943,7 @@ DirectX::XMMATRIX RotationMatrixFromTwoVectors(DirectX::FXMVECTOR from, DirectX:
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////// END DRAW
-void DX12Context::End()
+void DX12Context::End(const std::vector<std::string>& console_messages_)
 {
     // render the browser texture
     cmdList->DrawInstanced(6, 1, 0, 0);
@@ -983,6 +983,10 @@ void DX12Context::End()
 
         ImGui::SetNextWindowSize(ImVec2(400, 150), ImGuiCond_FirstUseEver);
         ImGui::Begin("Console output");
+        for (const std::string& str : console_messages_)
+        {
+            ImGui::Text(str.c_str());
+        }
         ImGui::End();
 
         ImGuiIO& io = ImGui::GetIO(); // Get screen size from ImGui

@@ -854,8 +854,24 @@ public:
         return true;
     }
 
+    bool OnConsoleMessage(CefRefPtr<CefBrowser> browser,
+        cef_log_severity_t level,
+        const CefString& message,
+        const CefString& source,
+        int line) override
+    {
+        console_messages_.push_back(message.ToString());
+
+        return false;
+    }
+
 
     CefRefPtr<CefBrowser> browser() const { return browser_; }
+
+    const std::vector<std::string>& GetConsoleMessages()
+    {
+        return console_messages_;
+    }
 
     IMPLEMENT_REFCOUNTING(CefOSRClient);
 private:
@@ -865,6 +881,8 @@ private:
     // Handles the browser side of query routing. The renderer side is handled
     // in client_renderer.cc.
     CefRefPtr<CefMessageRouterBrowserSide> message_router_;
+
+    std::vector<std::string> console_messages_;
 
 };
 
@@ -1104,7 +1122,7 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
         // Render frame
         std::chrono::steady_clock::time_point last = std::chrono::high_resolution_clock::now();
         lastMousePos = gDxCtx->Begin(last, mouseX, mouseY);
-        gDxCtx->End();
+        gDxCtx->End(gClient.get()->GetConsoleMessages());
 
         // send projected mouse position to CEF + buttons + wheel
         
