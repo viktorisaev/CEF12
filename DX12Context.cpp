@@ -89,6 +89,53 @@ void DX12Context::WaitGPU() {
     }
 }
 
+// ImGui - Simple free list based allocator
+struct ExampleDescriptorHeapAllocator
+{
+    ID3D12DescriptorHeap* Heap = nullptr;
+    D3D12_DESCRIPTOR_HEAP_TYPE  HeapType = D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES;
+    D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu;
+    D3D12_GPU_DESCRIPTOR_HANDLE HeapStartGpu;
+    UINT                        HeapHandleIncrement;
+    ImVector<int>               FreeIndices;
+
+    void Create(ID3D12Device* device, ID3D12DescriptorHeap* heap)
+    {
+        IM_ASSERT(Heap == nullptr && FreeIndices.empty());
+        Heap = heap;
+        D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
+        HeapType = desc.Type;
+        HeapStartCpu = Heap->GetCPUDescriptorHandleForHeapStart();
+        HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
+        HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
+        FreeIndices.reserve((int)desc.NumDescriptors);
+        for (int n = desc.NumDescriptors; n > 0; n--)
+            FreeIndices.push_back(n - 1);
+    }
+    void Destroy()
+    {
+        Heap = nullptr;
+        FreeIndices.clear();
+    }
+    void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle)
+    {
+        IM_ASSERT(FreeIndices.Size > 0);
+        int idx = FreeIndices.back();
+        FreeIndices.pop_back();
+        out_cpu_desc_handle->ptr = HeapStartCpu.ptr + (idx * HeapHandleIncrement);
+        out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
+    }
+    void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle)
+    {
+        int cpu_idx = (int)((out_cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
+        int gpu_idx = (int)((out_gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
+        IM_ASSERT(cpu_idx == gpu_idx);
+        FreeIndices.push_back(cpu_idx);
+    }
+};
+static ExampleDescriptorHeapAllocator g_pd3dSrvDescHeapAllocator;
+
+
 
 void DX12Context::Init(HWND hwnd, UINT width, UINT height)
 {
@@ -396,14 +443,35 @@ void DX12Context::Init(HWND hwnd, UINT width, UINT height)
     imguiHeapDesc.NumDescriptors = 1;
     imguiHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     device->CreateDescriptorHeap(&imguiHeapDesc, IID_PPV_ARGS(&imguiDescHeap));
+    // setup the heap in the ImGui allocator
+    g_pd3dSrvDescHeapAllocator.Create(device.Get(), imguiDescHeap.Get());
 
-    ImGui_ImplDX12_Init(NULL, kBackBufferCount, device.Get(), imguiDescHeap.Get()->GetCPUDescriptorHandleForHeapStart(), imguiDescHeap.Get()->GetGPUDescriptorHandleForHeapStart());
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
 
+    // Setup Platform/Renderer backends
+    ImGui_ImplDX12_InitInfo init_info = {};
+    init_info.Device = device.Get();
+    init_info.CommandQueue = queue.Get();
+    init_info.NumFramesInFlight = kBackBufferCount;
+    init_info.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+    init_info.DSVFormat = DXGI_FORMAT_UNKNOWN;
+    // Allocating SRV descriptors (for textures) is up to the application, so we provide callbacks.
+    // (current version of the backend will only allocate one descriptor, future versions will need to allocate more)
+    init_info.SrvDescriptorHeap = imguiDescHeap.Get();
+    init_info.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_handle) { return g_pd3dSrvDescHeapAllocator.Alloc(out_cpu_handle, out_gpu_handle); };
+    init_info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle) { return g_pd3dSrvDescHeapAllocator.Free(cpu_handle, gpu_handle); };
+    ImGui_ImplDX12_Init(&init_info);
 }
 
 
 void DX12Context::Finalize()
 {
+    // Cleanup
+    ImGui_ImplDX12_Shutdown();
+    ImGui::DestroyContext();
+
     CloseHandle(sharedBrowserHandle);
 }
 
@@ -908,10 +976,12 @@ void DX12Context::End()
     imguiCmdList->RSSetViewports(1, &vp);
     imguiCmdList->RSSetScissorRects(1, &sc);
 
-    ImGui_ImplDX12_NewFrame(imguiCmdList.Get(), DX12Context::gClientWidth, DX12Context::gClientHeight);
-    // Tip: if we don't call ImGui::Begin()/ImGui::End() the widgets appears in a window automatically called "Debug"
+    // Start the Dear ImGui frame
+    ImGui_ImplDX12_NewFrame();
+    ImGui::NewFrame();
     {
-        ImGui::SetNextWindowSize(ImVec2(400, 150), ImGuiSetCond_FirstUseEver);
+
+        ImGui::SetNextWindowSize(ImVec2(400, 150), ImGuiCond_FirstUseEver);
         ImGui::Begin("Console output");
         ImGui::End();
 
@@ -921,11 +991,11 @@ void DX12Context::End()
         ImVec2 windowPos = ImVec2(10, io.DisplaySize.y - 30); // 10px from left, 150px tall
         ImVec2 windowSize = ImVec2(300, 140); // Width and height of the panel
 
-        ImGui::SetNextWindowPos(windowPos, ImGuiSetCond_Always);
-        ImGui::SetNextWindowSize(windowSize, ImGuiSetCond_Always);
+        ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
+        ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
 
         // Set background alpha (0.0f = fully transparent, 1.0f = opaque)
-//        ImGui::SetNextWindowBgAlpha(0.5f); // 50% transparency
+        ImGui::SetNextWindowBgAlpha(0.5f); // 50% transparency
 
         // Begin the window
         ImGui::Begin("Bottom Left Panel", nullptr,
@@ -941,15 +1011,17 @@ void DX12Context::End()
         ImGui::End();
 
     }
+    ImGui::Render();    // render ImGui widgets layout
+
+    // Render Dear ImGui graphics
     imguiCmdList.Get()->SetDescriptorHeaps(1, imguiDescHeap.GetAddressOf());
-    ImGui::Render();
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), imguiCmdList.Get());
 
     CD3DX12_RESOURCE_BARRIER imguiRB2 = CD3DX12_RESOURCE_BARRIER::Transition(backBuffers[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
     imguiCmdList->ResourceBarrier(1, &imguiRB2);
 
     ThrowIfFailed(imguiCmdList->Close());
     // ImGui end =====================================================================================================
-
 
 
     ID3D12CommandList* lists[] = { cmdList.Get() };

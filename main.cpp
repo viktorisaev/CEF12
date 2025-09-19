@@ -34,7 +34,7 @@
 #include <include/cef_crash_util.h>
 #include <include/wrapper/cef_message_router.h>
 
-#include <imgui.h>
+#include <imgui_impl_win32.h>
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "d3d11.lib")
@@ -1059,6 +1059,9 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
     }
     CefBrowserHost::CreateBrowser(wi, gClient.get(), main_url, bs, nullptr, nullptr);
 
+    // ImGui init
+    ImGui_ImplWin32_Init(gHwnd);
+
     // Main loop
     MSG msg{};
     bool running = true;
@@ -1095,6 +1098,9 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
             mouseY = (2.0f * (-float(pt.y)) + float(DX12Context::gClientHeight)) / minSide;
         }
 
+        // let ImGui know we start a new frame
+        ImGui_ImplWin32_NewFrame();
+
         // Render frame
         std::chrono::steady_clock::time_point last = std::chrono::high_resolution_clock::now();
         lastMousePos = gDxCtx->Begin(last, mouseX, mouseY);
@@ -1106,6 +1112,8 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
         cefMouseEvent.y = int(lastMousePos.y * gDxCtx->browserH);
         cefMouseEvent.modifiers = EVENTFLAG_NONE; //EVENTFLAG_LEFT_MOUSE_BUTTON; // optional
     }
+
+    ImGui_ImplWin32_Shutdown();
 
     gDxCtx->Finalize();
 
@@ -1121,11 +1129,16 @@ int APIENTRY wWinMain(HINSTANCE hInst, HINSTANCE, LPWSTR, int)
     return 0;
 }
 
-// handle mouse in imgui
-extern LRESULT ImGui_ImplDX12_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+// Forward declare message handler from imgui_impl_win32.cpp
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+    {
+        return true;
+    }
+
     switch (msg) 
     {
     case WM_SIZE:
@@ -1142,8 +1155,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 browser->GetHost()->SendMouseMoveEvent(cefMouseEvent, false);
             }
         }
-
-        ImGui_ImplDX12_WndProcHandler(0, WM_MOUSEMOVE, 0, lParam);
 
         break;
     case WM_MOUSEWHEEL:
@@ -1172,8 +1183,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
         }
 
-        ImGui_ImplDX12_WndProcHandler(0, msg, 0, 0);
-
         break;
     case WM_LBUTTONUP:
         if (gClient) {
@@ -1182,8 +1191,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 browser->GetHost()->SendMouseClickEvent(cefMouseEvent, MBT_LEFT, true, 1);
             }
         }
-
-        ImGui_ImplDX12_WndProcHandler(0, msg, 0, 0);
 
         break;
     case WM_DESTROY:
